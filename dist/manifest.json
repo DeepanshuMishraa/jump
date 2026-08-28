@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Command Palette",
+  "version": "0.1.0",
+  "description": "Jump between open tabs with a fast, keyboard-first command palette.",
+  "permissions": ["tabs", "windows"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["assets/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": {
+    "service_worker": "assets/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Open Tab Command Palette"
+  },
+  "commands": {
+    "open-palette": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+P",
+        "mac": "Command+Shift+P"
+      },
+      "description": "Open the tab command palette"
+    }
+  }
+}
