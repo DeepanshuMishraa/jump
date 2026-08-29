@@ -19,6 +19,9 @@
   "action": {
     "default_title": "Open Tab Command Palette"
   },
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  },
   "commands": {
     "open-palette": {
       "suggested_key": {

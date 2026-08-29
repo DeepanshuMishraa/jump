@@ -6,6 +6,15 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #08080a;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -605,6 +614,10 @@ kbd {
    ========================================================================== */
 
 @media (prefers-color-scheme: light) {
+  html, body {
+    background: #f8f8fa;
+  }
+
   .palette-backdrop {
     background: rgba(0, 0, 0, 0.16);
   }
