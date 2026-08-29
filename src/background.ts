@@ -20,10 +20,6 @@ async function captureTabPreview(tabId?: number, windowId?: number) {
     });
     if (preview) {
       previewCache.set(tabId, preview);
-      if (previewCache.size > 50) {
-        const firstKey = previewCache.keys().next().value;
-        if (firstKey !== undefined) previewCache.delete(firstKey);
-      }
     }
   } catch {
     // Restricted browser pages cannot be captured.
@@ -69,7 +65,7 @@ async function openTabSwitcher() {
         previewCache.set(tab.id, currentPreview);
       }
     } catch {
-      // Restricted pages fallback to icons
+      // Restricted pages fallback to icons.
     }
   }
 
@@ -149,4 +145,3 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResp
 
   return false;
 });
-

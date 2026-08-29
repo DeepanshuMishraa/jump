@@ -1,5 +1,7 @@
 # Jump
 
+> Limitation: Jump cannot run on protected browser pages such as `chrome://settings`, `chrome://extensions`, the Chrome Web Store, or some built-in browser pages. It works on regular webpages and Jump’s new-tab page.
+
 A keyboard-first Chromium extension with two fast ways to switch tabs:
 
 - **Thumbnail switcher** — press `Alt+Q` to browse open tabs visually.
