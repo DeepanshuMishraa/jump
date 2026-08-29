@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Tab Command Palette",
+  "name": "Jump",
   "version": "0.1.0",
   "description": "Jump between open tabs with a fast, keyboard-first command palette.",
   "permissions": ["tabs", "windows", "scripting"],
@@ -17,7 +17,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "Open Tab Command Palette"
+    "default_title": "Open Jump"
   },
   "chrome_url_overrides": {
     "newtab": "index.html"
