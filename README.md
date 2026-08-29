@@ -1,6 +1,8 @@
 # Jump
 
-> Limitation: Jump cannot run on protected browser pages such as `chrome://settings`, `chrome://extensions`, the Chrome Web Store, or some built-in browser pages. It works on regular webpages and Jump’s new-tab page.
+> **Limitations**
+> 1. Jump cannot run on protected browser pages such as `chrome://settings`, `chrome://extensions`, the Chrome Web Store, or some built-in browser pages. It works on regular webpages and Jump’s new-tab page.
+> 2. `Ctrl+Tab` cannot be mapped directly to Jump because Chrome reserves it as a browser shortcut, and browser/OS shortcuts take priority over extension shortcuts. Jump uses `Alt+Q` instead; it may feel unfamiliar at first, but quickly becomes second nature.
 
 A keyboard-first Chromium extension with two fast ways to switch tabs:
 
