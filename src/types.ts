@@ -5,6 +5,7 @@ export type PaletteTab = {
   url: string;
   hostname: string;
   faviconUrl?: string;
+  previewUrl?: string;
   active: boolean;
   windowFocused: boolean;
   pinned: boolean;
@@ -16,5 +17,6 @@ export type BrowserMessage =
   | { type: "activate-tab"; tab: PaletteTab }
   | { type: "open-url"; url: string }
   | { type: "open-shortcut-settings" }
-  | { type: "open-palette" };
+  | { type: "open-palette"; mode?: "search" | "switcher"; previewUrl?: string }
+  | { type: "cycle-tab-switcher"; direction?: "next" | "prev" };
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { activateTab, getTabs, openUrl } from "./browser";
+import { registerCycleCallback } from "./content";
 import { ArrowUpRightIcon, ChevronDownIcon, CornerDownLeftIcon, GlobeIcon, SearchIcon, XIcon } from "./icons";
 import type { PaletteTab } from "./types";
 
@@ -47,18 +48,19 @@ function scoreTab(tab: PaletteTab, query: string) {
   return -1;
 }
 
-function TabFavicon({ tab }: { tab: PaletteTab }) {
+function TabFavicon({ tab, size = 16 }: { tab: PaletteTab; size?: number }) {
   const [failed, setFailed] = useState(false);
   if (!tab.faviconUrl || failed) {
     return (
-      <span className="item-icon fallback-favicon" aria-hidden="true">
-        <GlobeIcon size={14} />
+      <span className="item-icon fallback-favicon" style={{ width: size, height: size }} aria-hidden="true">
+        <GlobeIcon size={Math.round(size * 0.75)} />
       </span>
     );
   }
   return (
     <img
       className="item-icon tab-favicon"
+      style={{ width: size, height: size }}
       src={tab.faviconUrl}
       alt=""
       onError={() => setFailed(true)}
@@ -67,14 +69,72 @@ function TabFavicon({ tab }: { tab: PaletteTab }) {
   );
 }
 
-export function App({ onClose }: { onClose: () => void }) {
+function SwitcherCard({
+  tab,
+  isSelected,
+  previewUrl,
+  index,
+  onClick,
+  onMouseEnter,
+}: {
+  tab: PaletteTab;
+  isSelected: boolean;
+  previewUrl?: string;
+  index: number;
+  onClick: () => void;
+  onMouseEnter: () => void;
+}) {
+  const effectivePreview = tab.previewUrl || (tab.active && tab.windowFocused ? previewUrl : undefined);
+
+  return (
+    <div
+      data-switcher-index={index}
+      className={`switcher-card ${isSelected ? "is-selected" : ""}`}
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      role="option"
+      aria-selected={isSelected}
+    >
+      <div className="switcher-thumbnail">
+        {effectivePreview ? (
+          <img src={effectivePreview} alt="" className="switcher-thumbnail-image" loading="eager" />
+        ) : (
+          <div className="switcher-placeholder">
+            <div className="switcher-placeholder-icon">
+              <TabFavicon tab={tab} size={32} />
+            </div>
+            <span className="switcher-placeholder-domain">{tab.hostname || "Web Page"}</span>
+          </div>
+        )}
+        <div className="switcher-thumbnail-glass" />
+      </div>
+
+      <div className="switcher-card-footer">
+        <TabFavicon tab={tab} size={20} />
+        <span className="switcher-card-title">{tab.title}</span>
+      </div>
+    </div>
+  );
+}
+
+export function App({
+  onClose,
+  initialMode = "search",
+  previewUrl,
+}: {
+  onClose: () => void;
+  initialMode?: "search" | "switcher";
+  previewUrl?: string;
+}) {
   const [tabs, setTabs] = useState<PaletteTab[]>([]);
   const [query, setQuery] = useState("");
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [selectedIndex, setSelectedIndex] = useState(0);
+  const isSwitcher = initialMode === "switcher";
+  const [isExpanded, setIsExpanded] = useState(isSwitcher);
+  const [selectedIndex, setSelectedIndex] = useState(isSwitcher ? 1 : 0);
   const [isClosing, setIsClosing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -85,14 +145,20 @@ export function App({ onClose }: { onClose: () => void }) {
 
   const refreshTabs = useCallback(async () => {
     try {
-      setTabs(await getTabs());
+      const tabList = await getTabs();
+      setTabs(tabList);
+      if (isSwitcher && tabList.length > 1) {
+        setSelectedIndex(1);
+      }
     } catch {
       setTabs([]);
     }
-  }, []);
+  }, [isSwitcher]);
 
   useEffect(() => {
-    inputRef.current?.focus();
+    if (!isSwitcher) {
+      inputRef.current?.focus();
+    }
     void refreshTabs();
     const refresh = () => void refreshTabs();
     const events =
@@ -107,9 +173,95 @@ export function App({ onClose }: { onClose: () => void }) {
         : [];
     events.forEach((event) => event.addListener(refresh));
     return () => events.forEach((event) => event.removeListener(refresh));
-  }, [refreshTabs]);
+  }, [refreshTabs, isSwitcher]);
 
-  // Generate list items (matching tabs + URL/Search actions)
+  // Register cycle callback for Alt+Q repeat triggers
+  useEffect(() => {
+    if (!isSwitcher) return;
+    return registerCycleCallback((direction) => {
+      setSelectedIndex((curr) => {
+        if (tabs.length === 0) return 0;
+        if (direction === "next") return (curr + 1) % tabs.length;
+        return (curr - 1 + tabs.length) % tabs.length;
+      });
+    });
+  }, [isSwitcher, tabs.length]);
+
+  // Switch to selected tab
+  const switchTab = useCallback(
+    async (targetTab?: PaletteTab) => {
+      if (!targetTab) return;
+      await activateTab(targetTab);
+      handleClose();
+    },
+    [handleClose]
+  );
+
+  // Global keyup handler for releasing Alt key in switcher mode
+  useEffect(() => {
+    if (!isSwitcher) return;
+
+    let hasInteracted = false;
+
+    const handleWindowKeyUp = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Alt" || !event.altKey) {
+        if (tabs.length > 0 && selectedIndex < tabs.length) {
+          void switchTab(tabs[selectedIndex]);
+        } else {
+          handleClose();
+        }
+      }
+    };
+
+    const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        handleClose();
+        return;
+      }
+
+      if ((event.altKey || event.metaKey) && event.key.toLowerCase() === "q") {
+        event.preventDefault();
+        hasInteracted = true;
+        setSelectedIndex((curr) => {
+          if (tabs.length === 0) return 0;
+          if (event.shiftKey) return (curr - 1 + tabs.length) % tabs.length;
+          return (curr + 1) % tabs.length;
+        });
+        return;
+      }
+
+      if (event.key === "ArrowRight" || event.key === "Tab") {
+        event.preventDefault();
+        setSelectedIndex((curr) => (tabs.length ? (curr + 1) % tabs.length : 0));
+      } else if (event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey)) {
+        event.preventDefault();
+        setSelectedIndex((curr) => (tabs.length ? (curr - 1 + tabs.length) % tabs.length : 0));
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        if (tabs[selectedIndex]) {
+          void switchTab(tabs[selectedIndex]);
+        }
+      }
+    };
+
+    window.addEventListener("keyup", handleWindowKeyUp);
+    window.addEventListener("keydown", handleWindowKeyDown);
+    return () => {
+      window.removeEventListener("keyup", handleWindowKeyUp);
+      window.removeEventListener("keydown", handleWindowKeyDown);
+    };
+  }, [isSwitcher, tabs, selectedIndex, switchTab, handleClose]);
+
+  // Auto-scroll active card into view
+  useEffect(() => {
+    if (isSwitcher && trackRef.current) {
+      const activeEl = trackRef.current.querySelector(`[data-switcher-index="${selectedIndex}"]`);
+      activeEl?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    }
+  }, [selectedIndex, isSwitcher]);
+
+  // Generate list items (matching tabs + URL/Search actions) for search mode
   const items = useMemo<ListItem[]>(() => {
     const trimmed = query.trim();
     const matchedTabs: ListItem[] = tabs
@@ -155,34 +307,19 @@ export function App({ onClose }: { onClose: () => void }) {
     return [...matchedTabs, ...actionList];
   }, [query, tabs, handleClose]);
 
-  // Adjust selected index bounds
+  // Adjust selected index bounds for search list
   useEffect(() => {
-    setSelectedIndex((index) => Math.min(index, Math.max(0, items.length - 1)));
-  }, [items.length]);
+    if (!isSwitcher) {
+      setSelectedIndex((index) => Math.min(index, Math.max(0, items.length - 1)));
+    }
+  }, [items.length, isSwitcher]);
 
-  // Ensure selected item is visible in list
+  // Ensure selected item is visible in search list
   useEffect(() => {
-    if (!isExpanded || items.length === 0) return;
+    if (isSwitcher || !isExpanded || items.length === 0) return;
     const activeEl = listRef.current?.querySelector(`[data-index="${selectedIndex}"]`);
     activeEl?.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex, isExpanded, items.length]);
-
-  // Escape key handler
-  useEffect(() => {
-    const handleEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        if (query) {
-          setQuery("");
-          setIsExpanded(false);
-        } else {
-          handleClose();
-        }
-      }
-    };
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [query, handleClose]);
+  }, [selectedIndex, isExpanded, items.length, isSwitcher]);
 
   const executeItem = useCallback(
     async (item?: ListItem) => {
@@ -197,7 +334,18 @@ export function App({ onClose }: { onClose: () => void }) {
     [handleClose]
   );
 
-  function handleKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+  function handleSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      if (query) {
+        setQuery("");
+        setIsExpanded(false);
+      } else {
+        handleClose();
+      }
+      return;
+    }
+
     if (!isExpanded && (event.key === "ArrowDown" || event.key === "Tab")) {
       event.preventDefault();
       setIsExpanded(true);
@@ -229,6 +377,41 @@ export function App({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // Visual Horizontal Switcher Mode (Alt + Q)
+  if (isSwitcher) {
+    return (
+      <div
+        className={`palette-backdrop switcher-backdrop ${isClosing ? "is-closing" : ""}`}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) handleClose();
+        }}
+      >
+        <div className={`switcher-hud ${isClosing ? "is-closing" : ""}`} role="dialog" aria-label="Tab Switcher">
+          <div className="switcher-track" ref={trackRef} role="listbox">
+            {tabs.length === 0 ? (
+              <div className="empty-state">
+                <span>No open tabs</span>
+              </div>
+            ) : (
+              tabs.map((tab, index) => (
+                <SwitcherCard
+                  key={`switcher-${tab.windowId}-${tab.id}`}
+                  tab={tab}
+                  index={index}
+                  isSelected={index === selectedIndex}
+                  previewUrl={previewUrl}
+                  onClick={() => void switchTab(tab)}
+                  onMouseEnter={() => setSelectedIndex(index)}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Minimal Search Mode (Command + Shift + P)
   const showDropdown = isExpanded || Boolean(query.trim());
 
   return (
@@ -243,7 +426,6 @@ export function App({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
       >
-
         {/* Search Bar Input Row */}
         <div className="search-bar-row">
           <span className="search-lead-icon" aria-hidden="true">
@@ -262,7 +444,7 @@ export function App({ onClose }: { onClose: () => void }) {
                 setIsExpanded(true);
               }
             }}
-            onKeyDown={handleKeyDown}
+            onKeyDown={handleSearchKeyDown}
             placeholder="Enter URL or search..."
             aria-label="Search open tabs or enter URL"
             autoComplete="off"

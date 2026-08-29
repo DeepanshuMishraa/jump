@@ -26,6 +26,13 @@
         "mac": "Command+Shift+P"
       },
       "description": "Open the tab command palette"
+    },
+    "open-tab-switcher": {
+      "suggested_key": {
+        "default": "Alt+Q",
+        "mac": "Alt+Q"
+      },
+      "description": "Open the visual tab switcher"
     }
   }
 }

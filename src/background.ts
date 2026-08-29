@@ -1,11 +1,32 @@
 import type { BrowserMessage, PaletteTab } from "./types";
 
+const previewCache = new Map<number, string>();
+
 function hostnameFor(url?: string) {
   if (!url) return "";
   try {
     return new URL(url).hostname.replace(/^www\./, "");
   } catch {
     return url.replace(/^[a-z]+:\/\//i, "").split("/")[0];
+  }
+}
+
+async function captureTabPreview(tabId?: number, windowId?: number) {
+  if (tabId === undefined || windowId === undefined) return;
+  try {
+    const preview = await chrome.tabs.captureVisibleTab(windowId, {
+      format: "jpeg",
+      quality: 60,
+    });
+    if (preview) {
+      previewCache.set(tabId, preview);
+      if (previewCache.size > 50) {
+        const firstKey = previewCache.keys().next().value;
+        if (firstKey !== undefined) previewCache.delete(firstKey);
+      }
+    }
+  } catch {
+    // Restricted browser pages cannot be captured.
   }
 }
 
@@ -17,6 +38,27 @@ async function sendToActiveTab(message: BrowserMessage) {
   } catch {
     // Restricted browser pages cannot host content scripts; leave the page untouched.
   }
+}
+
+async function openTabSwitcher() {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  let currentPreview: string | undefined;
+
+  if (tab?.windowId !== undefined && tab?.id !== undefined) {
+    try {
+      currentPreview = await chrome.tabs.captureVisibleTab(tab.windowId, {
+        format: "jpeg",
+        quality: 60,
+      });
+      if (currentPreview) {
+        previewCache.set(tab.id, currentPreview);
+      }
+    } catch {
+      // Restricted pages fallback to icons
+    }
+  }
+
+  await sendToActiveTab({ type: "open-palette", mode: "switcher", previewUrl: currentPreview });
 }
 
 async function getTabs(): Promise<PaletteTab[]> {
@@ -35,6 +77,7 @@ async function getTabs(): Promise<PaletteTab[]> {
       url: tab.url || "",
       hostname: hostnameFor(tab.url),
       faviconUrl: tab.favIconUrl,
+      previewUrl: previewCache.get(tab.id),
       active: Boolean(tab.active),
       windowFocused: focusedWindows.has(tab.windowId),
       pinned: Boolean(tab.pinned),
@@ -47,11 +90,22 @@ async function getTabs(): Promise<PaletteTab[]> {
     });
 }
 
-chrome.commands.onCommand.addListener((command) => {
-  if (command === "open-palette") void sendToActiveTab({ type: "open-palette" });
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  setTimeout(() => {
+    void captureTabPreview(activeInfo.tabId, activeInfo.windowId);
+  }, 350);
 });
 
-chrome.action.onClicked.addListener(() => void sendToActiveTab({ type: "open-palette" }));
+chrome.tabs.onRemoved.addListener((tabId) => {
+  previewCache.delete(tabId);
+});
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command === "open-palette") void sendToActiveTab({ type: "open-palette", mode: "search" });
+  if (command === "open-tab-switcher") void openTabSwitcher();
+});
+
+chrome.action.onClicked.addListener(() => void sendToActiveTab({ type: "open-palette", mode: "search" }));
 
 chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResponse) => {
   if (message.type === "get-tabs") {
