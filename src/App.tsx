@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { activateTab, getTabs, openUrl } from "./browser";
-import { registerCycleCallback } from "./content";
 import { ArrowUpRightIcon, ChevronDownIcon, CornerDownLeftIcon, GlobeIcon, SearchIcon, XIcon } from "./icons";
-import type { PaletteTab } from "./types";
+import type { BrowserMessage, PaletteTab } from "./types";
 
 type ActionItem = {
   type: "action";
@@ -128,7 +127,8 @@ export function App({
 }) {
   const [tabs, setTabs] = useState<PaletteTab[]>([]);
   const [query, setQuery] = useState("");
-  const isSwitcher = initialMode === "switcher";
+  const [mode, setMode] = useState<"search" | "switcher">(initialMode);
+  const isSwitcher = mode === "switcher";
   const [isExpanded, setIsExpanded] = useState(isSwitcher);
   const [selectedIndex, setSelectedIndex] = useState(isSwitcher ? 1 : 0);
   const [isClosing, setIsClosing] = useState(false);
@@ -175,18 +175,36 @@ export function App({
     return () => events.forEach((event) => event.removeListener(refresh));
   }, [refreshTabs, isSwitcher]);
 
-  // Register cycle callback for Alt+Q repeat triggers
+  // Unified message listener for both in-page overlay and new tab page
   useEffect(() => {
-    if (!isSwitcher) return;
-    return registerCycleCallback((direction) => {
-      setSelectedIndex((curr) => {
-        if (tabs.length === 0) return 0;
-        if (direction === "next") return (curr + 1) % tabs.length;
-        return (curr - 1 + tabs.length) % tabs.length;
-      });
-    });
-  }, [isSwitcher, tabs.length]);
+    const handleMessage = (message: BrowserMessage) => {
+      if (message.type === "open-palette") {
+        if (message.mode === "switcher") {
+          setMode("switcher");
+          setIsExpanded(true);
+          setSelectedIndex((curr) => {
+            if (tabs.length === 0) return 0;
+            return (curr + 1) % tabs.length;
+          });
+        } else {
+          setMode("search");
+          setTimeout(() => inputRef.current?.focus(), 50);
+        }
+      } else if (message.type === "cycle-tab-switcher") {
+        setSelectedIndex((curr) => {
+          if (tabs.length === 0) return 0;
+          return message.direction === "prev"
+            ? (curr - 1 + tabs.length) % tabs.length
+            : (curr + 1) % tabs.length;
+        });
+      }
+    };
 
+    if (chrome.runtime?.onMessage) {
+      chrome.runtime.onMessage.addListener(handleMessage);
+      return () => chrome.runtime.onMessage.removeListener(handleMessage);
+    }
+  }, [tabs.length]);
 
   // Switch to selected tab
   const switchTab = useCallback(
@@ -198,11 +216,9 @@ export function App({
     [handleClose]
   );
 
-  // Global keyup handler for releasing Alt key in switcher mode
+  // Global keyup/keydown handler for releasing Alt key and cycling in switcher mode
   useEffect(() => {
     if (!isSwitcher) return;
-
-    let hasInteracted = false;
 
     const handleWindowKeyUp = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Alt" || !event.altKey) {
@@ -217,13 +233,14 @@ export function App({
     const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
+        event.stopPropagation();
         handleClose();
         return;
       }
 
       if ((event.altKey || event.metaKey) && event.key.toLowerCase() === "q") {
         event.preventDefault();
-        hasInteracted = true;
+        event.stopPropagation();
         setSelectedIndex((curr) => {
           if (tabs.length === 0) return 0;
           if (event.shiftKey) return (curr - 1 + tabs.length) % tabs.length;
@@ -234,25 +251,29 @@ export function App({
 
       if (event.key === "ArrowRight" || event.key === "Tab") {
         event.preventDefault();
+        event.stopPropagation();
         setSelectedIndex((curr) => (tabs.length ? (curr + 1) % tabs.length : 0));
       } else if (event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey)) {
         event.preventDefault();
+        event.stopPropagation();
         setSelectedIndex((curr) => (tabs.length ? (curr - 1 + tabs.length) % tabs.length : 0));
       } else if (event.key === "Enter") {
         event.preventDefault();
+        event.stopPropagation();
         if (tabs[selectedIndex]) {
           void switchTab(tabs[selectedIndex]);
         }
       }
     };
 
-    window.addEventListener("keyup", handleWindowKeyUp);
-    window.addEventListener("keydown", handleWindowKeyDown);
+    window.addEventListener("keyup", handleWindowKeyUp, { capture: true });
+    window.addEventListener("keydown", handleWindowKeyDown, { capture: true });
     return () => {
-      window.removeEventListener("keyup", handleWindowKeyUp);
-      window.removeEventListener("keydown", handleWindowKeyDown);
+      window.removeEventListener("keyup", handleWindowKeyUp, { capture: true });
+      window.removeEventListener("keydown", handleWindowKeyDown, { capture: true });
     };
   }, [isSwitcher, tabs, selectedIndex, switchTab, handleClose]);
+
 
   // Auto-scroll active card into view
   useEffect(() => {
