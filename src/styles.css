@@ -15,6 +15,18 @@ html, body {
   background: #08080a;
 }
 
+.newtab-canvas {
+  width: 100vw;
+  height: 100vh;
+  background: #08080a;
+}
+
+@media (prefers-color-scheme: light) {
+  .newtab-canvas {
+    background: #f8f8fa;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

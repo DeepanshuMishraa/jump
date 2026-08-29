@@ -5,12 +5,14 @@ import type { BrowserMessage } from "./types";
 import "./styles.css";
 
 function NewTabPage() {
+  const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<"search" | "switcher">("search");
 
   useEffect(() => {
     const handleMessage = (message: BrowserMessage) => {
       if (message.type === "open-palette") {
         setMode(message.mode || "search");
+        setIsOpen(true);
       }
     };
     if (chrome.runtime?.onMessage) {
@@ -19,16 +21,34 @@ function NewTabPage() {
     }
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) {
+        if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "p") {
+          e.preventDefault();
+          setMode("search");
+          setIsOpen(true);
+        } else if (e.altKey && e.key.toLowerCase() === "q") {
+          e.preventDefault();
+          setMode("switcher");
+          setIsOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [isOpen]);
+
+  if (!isOpen) {
+    return <div className="newtab-canvas" />;
+  }
+
   return (
     <App
       key={mode}
       initialMode={mode}
-      onClose={() => {
-        // If in switcher mode on new tab page, pressing esc can switch back to search mode
-        if (mode === "switcher") {
-          setMode("search");
-        }
-      }}
+      onClose={() => setIsOpen(false)}
     />
   );
 }
@@ -38,5 +58,6 @@ createRoot(document.getElementById("root")!).render(
     <NewTabPage />
   </StrictMode>,
 );
+
 
 
