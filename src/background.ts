@@ -36,7 +36,22 @@ async function sendToActiveTab(message: BrowserMessage) {
   try {
     await chrome.tabs.sendMessage(tab.id, message);
   } catch {
-    // Restricted browser pages cannot host content scripts; leave the page untouched.
+    // If the content script hasn't been injected into this tab yet, inject it on-demand
+    if (tab.id !== undefined && tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("edge://") && !tab.url.startsWith("about:")) {
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ["assets/content.js"],
+        });
+        setTimeout(() => {
+          if (tab.id !== undefined) {
+            void chrome.tabs.sendMessage(tab.id, message).catch(() => {});
+          }
+        }, 50);
+      } catch {
+        // Restricted page
+      }
+    }
   }
 }
 

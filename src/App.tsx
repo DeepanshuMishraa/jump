@@ -187,6 +187,7 @@ export function App({
     });
   }, [isSwitcher, tabs.length]);
 
+
   // Switch to selected tab
   const switchTab = useCallback(
     async (targetTab?: PaletteTab) => {
@@ -576,4 +577,3 @@ export function App({
     </div>
   );
 }
-

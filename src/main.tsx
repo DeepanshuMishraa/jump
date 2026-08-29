@@ -8,3 +8,4 @@ createRoot(document.getElementById("root")!).render(
     <App onClose={() => undefined} />
   </StrictMode>,
 );
+

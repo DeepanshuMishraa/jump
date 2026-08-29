@@ -3,7 +3,7 @@
   "name": "Tab Command Palette",
   "version": "0.1.0",
   "description": "Jump between open tabs with a fast, keyboard-first command palette.",
-  "permissions": ["tabs", "windows"],
+  "permissions": ["tabs", "windows", "scripting"],
   "host_permissions": ["<all_urls>"],
   "content_scripts": [
     {
