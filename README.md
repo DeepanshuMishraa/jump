@@ -1,3 +1,5 @@
+[Download Jump from the Chrome Web Store](https://chromewebstore.google.com/detail/aphoamhbckckomhmpfgedaeppkcloaio?utm_source=item-share-cb)
+
 # Jump
 
 > **Limitations**
