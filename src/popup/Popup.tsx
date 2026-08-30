@@ -12,10 +12,11 @@ const VIEW_OPTIONS = [
 
 export function Popup() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const [shortcuts, setShortcuts] = useState<Record<string, string>>({});
   const settingsRevision = useRef(0);
   const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
-  const searchShortcut = isMac ? ["⌘", "⇧", "P"] : ["Ctrl", "Shift", "P"];
-  const switcherShortcut = isMac ? ["⌥", "Q"] : ["Alt", "Q"];
+  const defaultSearchShortcut = isMac ? "⌘ ⇧ P" : "Ctrl Shift P";
+  const defaultSwitcherShortcut = isMac ? "⌥ Q" : "Alt Q";
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
     ? chrome.runtime.getManifest().version
     : "0.1.1";
@@ -29,6 +30,17 @@ export function Popup() {
         readRevision,
         settingsRevision.current,
       ));
+    });
+  }, []);
+
+  useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.commands?.getAll) return;
+    void chrome.commands.getAll().then((commands) => {
+      const currentShortcuts: Record<string, string> = {};
+      commands.forEach((command) => {
+        if (command.name && command.shortcut) currentShortcuts[command.name] = command.shortcut;
+      });
+      setShortcuts(currentShortcuts);
     });
   }, []);
 
@@ -85,14 +97,14 @@ export function Popup() {
       <section className="popup-shortcuts" aria-label="Keyboard shortcuts">
         <div className="popup-shortcut-row">
           <span>Search tabs</span>
-          <span className="popup-key-group" aria-label={searchShortcut.join(" ")}>
-            {searchShortcut.map((key) => <kbd key={key}>{key}</kbd>)}
+          <span className="popup-key-group" aria-label={shortcuts["open-palette"] ?? defaultSearchShortcut}>
+            <kbd>{shortcuts["open-palette"] ?? defaultSearchShortcut}</kbd>
           </span>
         </div>
         <div className="popup-shortcut-row">
           <span>Visual switcher</span>
-          <span className="popup-key-group" aria-label={switcherShortcut.join(" ")}>
-            {switcherShortcut.map((key) => <kbd key={key}>{key}</kbd>)}
+          <span className="popup-key-group" aria-label={shortcuts["open-tab-switcher"] ?? defaultSwitcherShortcut}>
+            <kbd>{shortcuts["open-tab-switcher"] ?? defaultSwitcherShortcut}</kbd>
           </span>
         </div>
       </section>

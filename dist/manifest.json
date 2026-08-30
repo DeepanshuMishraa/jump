@@ -10,7 +10,6 @@
     "128": "icons/icon128.png"
   },
   "permissions": ["tabs", "windows", "scripting", "activeTab", "storage"],
-  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"

@@ -2,6 +2,9 @@
   "name": "tab-command-palette",
   "private": true,
   "version": "0.1.1",
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

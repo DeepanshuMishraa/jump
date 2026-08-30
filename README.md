@@ -13,7 +13,7 @@ A keyboard-first Chromium extension with two fast ways to switch tabs:
 
 ## Install
 
-Requirements: Node.js and [pnpm](https://pnpm.io/installation).
+Requirements: Node.js 22.18+ and [pnpm](https://pnpm.io/installation).
 
 ```sh
 pnpm install

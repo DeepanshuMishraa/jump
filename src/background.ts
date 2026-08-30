@@ -9,12 +9,10 @@ type PreviewEntry = {
 
 const PREVIEW_CACHE_KEY = "recent-tab-previews";
 const PREVIEW_TTL_MS = 6 * 60 * 60 * 1000;
-const PREVIEW_CAPTURE_DELAY_MS = 700;
 const MAX_PREVIEW_COUNT = 12;
 const MAX_PREVIEW_CHARACTERS = 7_000_000;
 
 const previewCache = new Map<number, PreviewEntry>();
-const captureTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
 function hostnameFor(url?: string) {
   if (!url) return "";
@@ -121,24 +119,6 @@ async function capturePreview(tabId: number, windowId: number) {
   }
 }
 
-function schedulePreviewCapture(tabId: number, windowId: number) {
-  const pendingCapture = captureTimers.get(tabId);
-  if (pendingCapture !== undefined) clearTimeout(pendingCapture);
-
-  const timer = setTimeout(() => {
-    captureTimers.delete(tabId);
-    void capturePreview(tabId, windowId);
-  }, PREVIEW_CAPTURE_DELAY_MS);
-  captureTimers.set(tabId, timer);
-}
-
-async function scheduleActiveTabCapture() {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (tab?.id !== undefined && tab.windowId !== undefined) {
-    schedulePreviewCapture(tab.id, tab.windowId);
-  }
-}
-
 async function sendToActiveTab(message: BrowserMessage) {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (tab?.id === undefined) return;
@@ -194,44 +174,31 @@ async function getTabs(): Promise<PaletteTab[]> {
     });
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  void scheduleActiveTabCapture();
-});
-
-chrome.runtime.onStartup.addListener(() => {
-  void scheduleActiveTabCapture();
-});
-
-chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
-  schedulePreviewCapture(tabId, windowId);
-});
-
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.url !== undefined) {
-    void removeCachedPreview(tabId);
-  }
-  if ((changeInfo.status === "complete" || changeInfo.url !== undefined) && tab.active) {
-    schedulePreviewCapture(tabId, tab.windowId);
-  }
-});
-
-chrome.windows.onFocusChanged.addListener((windowId) => {
-  if (windowId === chrome.windows.WINDOW_ID_NONE) return;
-  void chrome.tabs.query({ active: true, windowId }).then(([tab]) => {
-    if (tab?.id !== undefined) schedulePreviewCapture(tab.id, windowId);
-  });
-});
-
 chrome.tabs.onRemoved.addListener((tabId) => {
-  const pendingCapture = captureTimers.get(tabId);
-  if (pendingCapture !== undefined) clearTimeout(pendingCapture);
-  captureTimers.delete(tabId);
   void removeCachedPreview(tabId);
 });
 
+async function openTabSwitcher() {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const capturePromise = tab?.id !== undefined && tab.windowId !== undefined
+    ? capturePreview(tab.id, tab.windowId)
+    : Promise.resolve();
+
+  // Start capture during the command gesture, but do not make the UI wait for it.
+  await sendToActiveTab({ type: "open-palette", mode: "switcher" });
+  await capturePromise;
+
+  if (tab?.id !== undefined) {
+    const previewUrl = previewCache.get(tab.id)?.dataUrl;
+    if (previewUrl !== undefined) {
+      await sendToActiveTab({ type: "update-switcher-preview", previewUrl });
+    }
+  }
+}
+
 chrome.commands.onCommand.addListener((command) => {
   if (command === "open-palette") void sendToActiveTab({ type: "open-palette", mode: "search" });
-  if (command === "open-tab-switcher") void sendToActiveTab({ type: "open-palette", mode: "switcher" });
+  if (command === "open-tab-switcher") void openTabSwitcher();
 });
 
 chrome.action.onClicked.addListener(() => void sendToActiveTab({ type: "open-palette", mode: "search" }));
