@@ -9,15 +9,7 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["tabs", "windows", "scripting"],
-  "host_permissions": ["<all_urls>"],
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["assets/content.js"],
-      "run_at": "document_idle"
-    }
-  ],
+  "permissions": ["tabs", "windows", "scripting", "activeTab"],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"
