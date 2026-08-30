@@ -25,9 +25,11 @@ export default defineConfig(({ mode }) => {
   build: {
     outDir: "dist",
     emptyOutDir: !contentBuild,
+    modulePreload: false,
     rollupOptions: {
       input: contentBuild ? resolve(projectRoot, "src/content.tsx") : {
         app: resolve(projectRoot, "index.html"),
+        popup: resolve(projectRoot, "popup.html"),
         background: resolve(projectRoot, "src/background.ts"),
       },
       output: contentBuild ? {

@@ -1,37 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { activateTab, getTabs, openUrl } from "./browser";
-import { ArrowUpRightIcon, ChevronDownIcon, CornerDownLeftIcon, GlobeIcon, SearchIcon, XIcon } from "./icons";
-import type { BrowserMessage, PaletteTab } from "./types";
-
-type ActionItem = {
-  type: "action";
-  id: string;
-  title: string;
-  subtitle: string;
-  action: () => Promise<void> | void;
-  icon: "globe" | "search";
-};
-
-type TabItem = {
-  type: "tab";
-  tab: PaletteTab;
-};
-
-type ListItem = TabItem | ActionItem;
-
-function isUrlLike(text: string) {
-  const trimmed = text.trim();
-  if (/^https?:\/\//i.test(trimmed)) return true;
-  if (/^localhost(:\d+)?(\/.*)?$/i.test(trimmed)) return true;
-  if (/^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(\/.*)?$/i.test(trimmed)) return true;
-  return false;
-}
-
-function normalizeUrl(text: string) {
-  const trimmed = text.trim();
-  if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  return `https://${trimmed}`;
-}
+import { activateTab, getTabs } from "./browser";
+import { ChevronDownIcon, GlobeIcon, XIcon } from "./icons";
+import { DEFAULT_SETTINGS, getStoredSettings, subscribeToSettings } from "./settings";
+import type { BrowserMessage, PaletteTab, UserSettings } from "./types";
 
 function scoreTab(tab: PaletteTab, query: string) {
   if (!query) return tab.windowFocused ? 100 : tab.active ? 90 : tab.lastAccessed ? 50 : 10;
@@ -109,8 +80,56 @@ function SwitcherCard({
       </div>
 
       <div className="switcher-card-footer">
-        <TabFavicon tab={tab} size={20} />
+        <TabFavicon tab={tab} size={18} />
         <span className="switcher-card-title">{tab.title}</span>
+      </div>
+    </div>
+  );
+}
+
+function GalleryCard({
+  tab,
+  index,
+  isSelected,
+  previewUrl,
+  onClick,
+  onMouseEnter,
+}: {
+  tab: PaletteTab;
+  index: number;
+  isSelected: boolean;
+  previewUrl?: string;
+  onClick: () => void;
+  onMouseEnter: () => void;
+}) {
+  const effectivePreview = tab.previewUrl || (tab.active && tab.windowFocused ? previewUrl : undefined);
+
+  return (
+    <div
+      data-index={index}
+      className={`gallery-card ${isSelected ? "selected" : ""}`}
+      onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      role="option"
+      aria-selected={isSelected}
+    >
+      <div className="gallery-thumbnail">
+        {effectivePreview ? (
+          <img src={effectivePreview} alt="" className="gallery-thumbnail-image" loading="eager" />
+        ) : (
+          <div className="gallery-placeholder">
+            <TabFavicon tab={tab} size={28} />
+            <span className="gallery-placeholder-domain">{tab.hostname || "Web Page"}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="gallery-meta">
+        <div className="gallery-meta-left">
+          <TabFavicon tab={tab} size={15} />
+          <span className="gallery-title">{tab.title}</span>
+        </div>
+        {tab.hostname && <span className="gallery-domain">{tab.hostname}</span>}
       </div>
     </div>
   );
@@ -128,13 +147,23 @@ export function App({
   const [tabs, setTabs] = useState<PaletteTab[]>([]);
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"search" | "switcher">(initialMode);
+  const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const [currentPreviewUrl, setCurrentPreviewUrl] = useState(previewUrl);
+
   const isSwitcher = mode === "switcher";
+  const isGallery = settings.viewMode === "gallery";
   const [isExpanded, setIsExpanded] = useState(isSwitcher);
   const [selectedIndex, setSelectedIndex] = useState(isSwitcher ? 1 : 0);
   const [isClosing, setIsClosing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+
+  // Load and subscribe to persistent settings
+  useEffect(() => {
+    void getStoredSettings().then(setSettings);
+    return subscribeToSettings(setSettings);
+  }, []);
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -178,9 +207,14 @@ export function App({
   // Unified message listener for both in-page overlay and new tab page
   useEffect(() => {
     const handleMessage = (message: BrowserMessage) => {
-      if (message.type === "open-palette") {
+      if (message.type === "update-switcher-preview") {
+        setCurrentPreviewUrl(message.previewUrl);
+      } else if (message.type === "open-palette") {
         if (message.mode === "switcher") {
           setMode("switcher");
+          if (message.previewUrl !== undefined) {
+            setCurrentPreviewUrl(message.previewUrl);
+          }
           setIsExpanded(true);
           setSelectedIndex((curr) => {
             if (tabs.length === 0) return 0;
@@ -188,6 +222,8 @@ export function App({
           });
         } else {
           setMode("search");
+          setIsExpanded(false);
+          setQuery("");
           setTimeout(() => inputRef.current?.focus(), 50);
         }
       } else if (message.type === "cycle-tab-switcher") {
@@ -238,17 +274,6 @@ export function App({
         return;
       }
 
-      if ((event.altKey || event.metaKey) && event.key.toLowerCase() === "q") {
-        event.preventDefault();
-        event.stopPropagation();
-        setSelectedIndex((curr) => {
-          if (tabs.length === 0) return 0;
-          if (event.shiftKey) return (curr - 1 + tabs.length) % tabs.length;
-          return (curr + 1) % tabs.length;
-        });
-        return;
-      }
-
       if (event.key === "ArrowRight" || event.key === "Tab") {
         event.preventDefault();
         event.stopPropagation();
@@ -274,60 +299,24 @@ export function App({
     };
   }, [isSwitcher, tabs, selectedIndex, switchTab, handleClose]);
 
-
   // Auto-scroll active card into view
   useEffect(() => {
     if (isSwitcher && trackRef.current) {
       const activeEl = trackRef.current.querySelector(`[data-switcher-index="${selectedIndex}"]`);
-      activeEl?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth";
+      activeEl?.scrollIntoView({ behavior, inline: "center", block: "nearest" });
     }
   }, [selectedIndex, isSwitcher]);
 
-  // Generate list items (matching tabs + URL/Search actions) for search mode
-  const items = useMemo<ListItem[]>(() => {
+  // Filter open tabs strictly
+  const items = useMemo<PaletteTab[]>(() => {
     const trimmed = query.trim();
-    const matchedTabs: ListItem[] = tabs
+    return tabs
       .map((tab, index) => ({ tab, score: scoreTab(tab, trimmed), index }))
       .filter((entry) => entry.score >= 0)
       .sort((a, b) => b.score - a.score || a.index - b.index)
-      .map(({ tab }) => ({ type: "tab", tab }));
-
-    if (!trimmed) {
-      return matchedTabs;
-    }
-
-    const actionList: ListItem[] = [];
-
-    if (isUrlLike(trimmed)) {
-      const targetUrl = normalizeUrl(trimmed);
-      actionList.push({
-        type: "action",
-        id: "open-url",
-        title: `Open ${targetUrl}`,
-        subtitle: "Navigate in new tab",
-        action: async () => {
-          await openUrl(targetUrl);
-          handleClose();
-        },
-        icon: "globe",
-      });
-    }
-
-    actionList.push({
-      type: "action",
-      id: "search-google",
-      title: `Search Google for "${trimmed}"`,
-      subtitle: "Web search",
-      action: async () => {
-        const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(trimmed)}`;
-        await openUrl(googleUrl);
-        handleClose();
-      },
-      icon: "search",
-    });
-
-    return [...matchedTabs, ...actionList];
-  }, [query, tabs, handleClose]);
+      .map(({ tab }) => tab);
+  }, [query, tabs]);
 
   // Adjust selected index bounds for search list
   useEffect(() => {
@@ -342,19 +331,6 @@ export function App({
     const activeEl = listRef.current?.querySelector(`[data-index="${selectedIndex}"]`);
     activeEl?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex, isExpanded, items.length, isSwitcher]);
-
-  const executeItem = useCallback(
-    async (item?: ListItem) => {
-      if (!item) return;
-      if (item.type === "tab") {
-        await activateTab(item.tab);
-        handleClose();
-      } else if (item.type === "action") {
-        await item.action();
-      }
-    },
-    [handleClose]
-  );
 
   function handleSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
@@ -375,26 +351,31 @@ export function App({
       return;
     }
 
-    if (event.key === "ArrowDown" || (event.key.toLowerCase() === "j" && (event.metaKey || event.ctrlKey))) {
+    if (isGallery && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      event.preventDefault();
+      const direction = event.key === "ArrowRight" ? 1 : -1;
+      setSelectedIndex((index) => Math.max(0, Math.min(index + direction, items.length - 1)));
+    } else if (event.key === "ArrowDown" || (event.key.toLowerCase() === "j" && (event.metaKey || event.ctrlKey))) {
       event.preventDefault();
       setIsExpanded(true);
-      setSelectedIndex((index) => (items.length ? (index + 1) % items.length : 0));
+      const step = isGallery ? 2 : 1;
+      setSelectedIndex((index) => isGallery
+        ? Math.min(index + step, Math.max(0, items.length - 1))
+        : items.length ? (index + step) % items.length : 0);
     } else if (event.key === "ArrowUp" || (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey))) {
       event.preventDefault();
-      if (selectedIndex === 0 && !query) {
+      if (selectedIndex === 0 && !query && !isGallery) {
         setIsExpanded(false);
       } else {
-        setSelectedIndex((index) => (items.length ? (index - 1 + items.length) % items.length : 0));
+        const step = isGallery ? 2 : 1;
+        setSelectedIndex((index) => isGallery
+          ? Math.max(index - step, 0)
+          : items.length ? (index - step + items.length) % items.length : 0);
       }
     } else if (event.key === "Enter") {
       event.preventDefault();
-      if (items.length > 0) {
-        void executeItem(items[selectedIndex]);
-      } else if (query.trim()) {
-        const url = isUrlLike(query)
-          ? normalizeUrl(query)
-          : `https://www.google.com/search?q=${encodeURIComponent(query.trim())}`;
-        void openUrl(url).then(() => handleClose());
+      if (items.length > 0 && items[selectedIndex]) {
+        void switchTab(items[selectedIndex]);
       }
     }
   }
@@ -404,6 +385,7 @@ export function App({
     return (
       <div
         className={`palette-backdrop switcher-backdrop ${isClosing ? "is-closing" : ""}`}
+        data-theme={settings.theme}
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) handleClose();
         }}
@@ -421,7 +403,7 @@ export function App({
                   tab={tab}
                   index={index}
                   isSelected={index === selectedIndex}
-                  previewUrl={previewUrl}
+                  previewUrl={currentPreviewUrl}
                   onClick={() => void switchTab(tab)}
                   onMouseEnter={() => setSelectedIndex(index)}
                 />
@@ -434,26 +416,25 @@ export function App({
   }
 
   // Minimal Search Mode (Command + Shift + P)
+  // By default, initially only shows the search input bar.
+  // Expands only when user types or presses Down arrow.
   const showDropdown = isExpanded || Boolean(query.trim());
 
   return (
     <div
       className={`palette-backdrop ${isClosing ? "is-closing" : ""}`}
+      data-theme={settings.theme}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) handleClose();
       }}
     >
       <div
-        className={`palette-card ${showDropdown ? "is-expanded" : ""} ${isClosing ? "is-closing" : ""}`}
+        className={`palette-card ${showDropdown ? "is-expanded" : ""} ${isGallery && showDropdown ? "is-gallery-view" : ""} ${isClosing ? "is-closing" : ""}`}
         role="dialog"
         aria-modal="true"
       >
-        {/* Search Bar Input Row */}
+        {/* Elevated 3D Search Bar Input Row */}
         <div className="search-bar-row">
-          <span className="search-lead-icon" aria-hidden="true">
-            <SearchIcon size={16} />
-          </span>
-
           <input
             ref={inputRef}
             type="text"
@@ -467,8 +448,8 @@ export function App({
               }
             }}
             onKeyDown={handleSearchKeyDown}
-            placeholder="Enter URL or search..."
-            aria-label="Search open tabs or enter URL"
+            placeholder="Search open tabs..."
+            aria-label="Search open tabs"
             autoComplete="off"
             spellCheck="false"
           />
@@ -480,6 +461,7 @@ export function App({
               onClick={() => {
                 setQuery("");
                 setSelectedIndex(0);
+                setIsExpanded(false);
                 inputRef.current?.focus();
               }}
               aria-label="Clear query"
@@ -506,90 +488,67 @@ export function App({
         {showDropdown && (
           <>
             <div className="palette-divider" />
-            <div className="item-list" ref={listRef} role="listbox">
+            <div
+              className={`item-list ${isGallery ? "gallery-grid" : ""}`}
+              ref={listRef}
+              role="listbox"
+            >
               {items.length === 0 ? (
                 <div className="empty-state">
                   <span>No matching tabs</span>
                 </div>
+              ) : isGallery ? (
+                items.map((tab, index) => (
+                  <GalleryCard
+                    key={`gal-${tab.windowId}-${tab.id}`}
+                    tab={tab}
+                    index={index}
+                    isSelected={index === selectedIndex}
+                    previewUrl={currentPreviewUrl}
+                    onClick={() => void switchTab(tab)}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                  />
+                ))
               ) : (
-                items.map((item, index) => {
+                items.map((tab, index) => {
                   const isSelected = index === selectedIndex;
-                  if (item.type === "tab") {
-                    const tab = item.tab;
-                    return (
-                      <div
-                        key={`tab-${tab.windowId}-${tab.id}`}
-                        data-index={index}
-                        style={{ "--item-index": index } as React.CSSProperties}
-                        className={`list-row ${isSelected ? "selected" : ""}`}
-                        role="option"
-                        aria-selected={isSelected}
-                        onMouseEnter={() => setSelectedIndex(index)}
-                        onClick={() => void executeItem(item)}
-                      >
-                        <TabFavicon tab={tab} />
-                        <div className="row-content">
-                          <span className="row-title">{tab.title}</span>
-                          <span className="row-subtitle">{tab.hostname || tab.url}</span>
-                        </div>
-                        {tab.active && tab.windowFocused && <span className="status-badge">Current</span>}
-                        {tab.pinned && <span className="status-badge">Pinned</span>}
-                        {isSelected && (
-                          <span className="action-hint" aria-hidden="true">
-                            <CornerDownLeftIcon size={12} />
-                          </span>
-                        )}
-                      </div>
-                    );
-                  }
-
                   return (
                     <div
-                      key={item.id}
+                      key={`tab-${tab.windowId}-${tab.id}`}
                       data-index={index}
                       style={{ "--item-index": index } as React.CSSProperties}
                       className={`list-row ${isSelected ? "selected" : ""}`}
                       role="option"
                       aria-selected={isSelected}
                       onMouseEnter={() => setSelectedIndex(index)}
-                      onClick={() => void executeItem(item)}
+                      onClick={() => void switchTab(tab)}
                     >
-                      <span className="item-icon action-icon" aria-hidden="true">
-                        {item.icon === "globe" ? <ArrowUpRightIcon size={14} /> : <SearchIcon size={14} />}
-                      </span>
+                      <TabFavicon tab={tab} />
                       <div className="row-content">
-                        <span className="row-title">{item.title}</span>
-                        <span className="row-subtitle">{item.subtitle}</span>
+                        <span className="row-title">{tab.title}</span>
+                        <span className="row-subtitle">{tab.hostname || tab.url}</span>
                       </div>
-                      {isSelected && (
-                        <span className="action-hint" aria-hidden="true">
-                          <CornerDownLeftIcon size={12} />
-                        </span>
-                      )}
+                      {tab.active && tab.windowFocused && <span className="status-badge">Current</span>}
+                      {tab.pinned && <span className="status-badge">Pinned</span>}
                     </div>
                   );
                 })
               )}
             </div>
 
-            {/* Clean, minimal footer hint */}
+            {/* Clean, minimal footer */}
             <div className="palette-footer">
               <div className="footer-group">
                 <span className="meta-count">
                   {tabs.length} {tabs.length === 1 ? "tab" : "tabs"}
                 </span>
               </div>
+
               <div className="footer-keys">
-                <span>
-                  <kbd>↑</kbd>
-                  <kbd>↓</kbd> navigate
-                </span>
-                <span>
-                  <kbd>↵</kbd> select
-                </span>
-                <span>
-                  <kbd>esc</kbd> close
-                </span>
+                <kbd>↑</kbd>
+                <kbd>↓</kbd>
+                <kbd>↵</kbd>
+                <kbd>esc</kbd>
               </div>
             </div>
           </>

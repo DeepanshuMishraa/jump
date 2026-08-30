@@ -1,6 +1,18 @@
 import type { BrowserMessage, PaletteTab } from "./types";
 
-const previewCache = new Map<number, string>();
+type PreviewEntry = {
+  tabId: number;
+  url: string;
+  dataUrl: string;
+  capturedAt: number;
+};
+
+const PREVIEW_CACHE_KEY = "recent-tab-previews";
+const PREVIEW_TTL_MS = 6 * 60 * 60 * 1000;
+const MAX_PREVIEW_COUNT = 12;
+const MAX_PREVIEW_CHARACTERS = 7_000_000;
+
+const previewCache = new Map<number, PreviewEntry>();
 
 function hostnameFor(url?: string) {
   if (!url) return "";
@@ -11,18 +23,99 @@ function hostnameFor(url?: string) {
   }
 }
 
-async function captureTabPreview(tabId?: number, windowId?: number) {
-  if (tabId === undefined || windowId === undefined) return;
+function parsePreviewEntries(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return value.filter((entry): entry is PreviewEntry =>
+    typeof entry === "object" &&
+    entry !== null &&
+    "tabId" in entry &&
+    typeof entry.tabId === "number" &&
+    "url" in entry &&
+    typeof entry.url === "string" &&
+    "dataUrl" in entry &&
+    typeof entry.dataUrl === "string" &&
+    "capturedAt" in entry &&
+    typeof entry.capturedAt === "number"
+  );
+}
+
+function prunePreviewCache(now = Date.now()) {
+  const previousTabIds = new Set(previewCache.keys());
+  const recentEntries = [...previewCache.values()]
+    .filter((entry) => now - entry.capturedAt < PREVIEW_TTL_MS)
+    .sort((a, b) => b.capturedAt - a.capturedAt);
+
+  previewCache.clear();
+  let totalCharacters = 0;
+
+  for (const entry of recentEntries) {
+    if (previewCache.size >= MAX_PREVIEW_COUNT) break;
+    if (totalCharacters + entry.dataUrl.length > MAX_PREVIEW_CHARACTERS) continue;
+    previewCache.set(entry.tabId, entry);
+    totalCharacters += entry.dataUrl.length;
+  }
+
+  return previousTabIds.size !== previewCache.size ||
+    [...previousTabIds].some((tabId) => !previewCache.has(tabId));
+}
+
+async function writePreviewCache() {
   try {
-    const preview = await chrome.tabs.captureVisibleTab(windowId, {
-      format: "jpeg",
-      quality: 60,
+    await chrome.storage.session.set({
+      [PREVIEW_CACHE_KEY]: [...previewCache.values()],
     });
-    if (preview) {
-      previewCache.set(tabId, preview);
-    }
   } catch {
-    // Restricted browser pages cannot be captured.
+    // The in-memory cache remains usable if session storage is unavailable.
+  }
+}
+
+async function persistPreviewCache() {
+  await previewCacheReady;
+  prunePreviewCache();
+  await writePreviewCache();
+}
+
+const previewCacheReady = chrome.storage.session
+  .get(PREVIEW_CACHE_KEY)
+  .then(async (stored) => {
+    const entries = parsePreviewEntries(stored[PREVIEW_CACHE_KEY]);
+    entries.forEach((entry) => previewCache.set(entry.tabId, entry));
+    if (prunePreviewCache()) await writePreviewCache();
+  })
+  .catch(() => {});
+
+async function removeCachedPreview(tabId: number) {
+  await previewCacheReady;
+  previewCache.delete(tabId);
+  await persistPreviewCache();
+}
+
+async function capturePreview(tabId: number, windowId: number) {
+  await previewCacheReady;
+
+  try {
+    const [tab, window] = await Promise.all([
+      chrome.tabs.get(tabId),
+      chrome.windows.get(windowId),
+    ]);
+    if (!tab.active || !window.focused || !tab.url) return;
+
+    const dataUrl = await chrome.tabs.captureVisibleTab(windowId, {
+      format: "jpeg",
+      quality: 35,
+    });
+    if (!dataUrl) return;
+
+    previewCache.set(tabId, {
+      tabId,
+      url: tab.url,
+      dataUrl,
+      capturedAt: Date.now(),
+    });
+    await persistPreviewCache();
+  } catch {
+    // Restricted browser pages and closed tabs cannot be captured.
   }
 }
 
@@ -32,68 +125,48 @@ async function sendToActiveTab(message: BrowserMessage) {
   try {
     await chrome.tabs.sendMessage(tab.id, message);
   } catch {
-    // If the content script hasn't been injected into this tab yet, inject it on-demand
-    if (tab.id !== undefined && tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("edge://") && !tab.url.startsWith("about:")) {
+    if (tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("edge://") && !tab.url.startsWith("about:")) {
       try {
         await chrome.scripting.executeScript({
           target: { tabId: tab.id },
           files: ["assets/content.js"],
         });
-        setTimeout(() => {
-          if (tab.id !== undefined) {
-            void chrome.tabs.sendMessage(tab.id, message).catch(() => {});
-          }
-        }, 50);
+        await chrome.tabs.sendMessage(tab.id, message);
       } catch {
-        // Restricted page
+        // Browser-owned and otherwise restricted pages cannot host the palette.
       }
     }
   }
-}
-
-async function openTabSwitcher() {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  let currentPreview: string | undefined;
-
-  if (tab?.windowId !== undefined && tab?.id !== undefined) {
-    try {
-      currentPreview = await chrome.tabs.captureVisibleTab(tab.windowId, {
-        format: "jpeg",
-        quality: 60,
-      });
-      if (currentPreview) {
-        previewCache.set(tab.id, currentPreview);
-      }
-    } catch {
-      // Restricted pages fallback to icons.
-    }
-  }
-
-  await sendToActiveTab({ type: "open-palette", mode: "switcher", previewUrl: currentPreview });
 }
 
 async function getTabs(): Promise<PaletteTab[]> {
   const [tabs, windows] = await Promise.all([
     chrome.tabs.query({}),
     chrome.windows.getAll({ populate: false }),
+    previewCacheReady,
   ]);
+  if (prunePreviewCache()) await writePreviewCache();
+
   const focusedWindows = new Set(windows.filter((window) => window.focused).map((window) => window.id));
 
   return tabs
     .filter((tab): tab is chrome.tabs.Tab & { id: number; windowId: number } => tab.id !== undefined)
-    .map((tab) => ({
-      id: tab.id,
-      windowId: tab.windowId,
-      title: tab.title?.trim() || "Untitled tab",
-      url: tab.url || "",
-      hostname: hostnameFor(tab.url),
-      faviconUrl: tab.favIconUrl,
-      previewUrl: previewCache.get(tab.id),
-      active: Boolean(tab.active),
-      windowFocused: focusedWindows.has(tab.windowId),
-      pinned: Boolean(tab.pinned),
-      lastAccessed: tab.lastAccessed,
-    }))
+    .map((tab) => {
+      const preview = previewCache.get(tab.id);
+      return {
+        id: tab.id,
+        windowId: tab.windowId,
+        title: tab.title?.trim() || "Untitled tab",
+        url: tab.url || "",
+        hostname: hostnameFor(tab.url),
+        faviconUrl: tab.favIconUrl,
+        previewUrl: preview && preview.url === tab.url ? preview.dataUrl : undefined,
+        active: Boolean(tab.active),
+        windowFocused: focusedWindows.has(tab.windowId),
+        pinned: Boolean(tab.pinned),
+        lastAccessed: tab.lastAccessed,
+      };
+    })
     .sort((a, b) => {
       if (a.windowFocused !== b.windowFocused) return a.windowFocused ? -1 : 1;
       if (a.active !== b.active) return a.active ? -1 : 1;
@@ -101,15 +174,27 @@ async function getTabs(): Promise<PaletteTab[]> {
     });
 }
 
-chrome.tabs.onActivated.addListener((activeInfo) => {
-  setTimeout(() => {
-    void captureTabPreview(activeInfo.tabId, activeInfo.windowId);
-  }, 350);
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void removeCachedPreview(tabId);
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => {
-  previewCache.delete(tabId);
-});
+async function openTabSwitcher() {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const capturePromise = tab?.id !== undefined && tab.windowId !== undefined
+    ? capturePreview(tab.id, tab.windowId)
+    : Promise.resolve();
+
+  // Start capture during the command gesture, but do not make the UI wait for it.
+  await sendToActiveTab({ type: "open-palette", mode: "switcher" });
+  await capturePromise;
+
+  if (tab?.id !== undefined) {
+    const previewUrl = previewCache.get(tab.id)?.dataUrl;
+    if (previewUrl !== undefined) {
+      await sendToActiveTab({ type: "update-switcher-preview", previewUrl });
+    }
+  }
+}
 
 chrome.commands.onCommand.addListener((command) => {
   if (command === "open-palette") void sendToActiveTab({ type: "open-palette", mode: "search" });
