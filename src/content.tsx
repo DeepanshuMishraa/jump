@@ -6,16 +6,12 @@ import cssText from "./styles.css?inline";
 let root: Root | undefined;
 let host: HTMLDivElement | undefined;
 
-// The palette lives in a closed shadow root, which causes `event.target` to
-// be retargeted to the shadow host for listeners outside the shadow tree.
-// That means a host page's own "am I typing in a form field?" check (which
-// inspects event.target / document.activeElement) can't tell it's an
-// <input>, so its own keyboard shortcuts (e.g. "n" for a new post on
-// x.com) still fire while the palette is focused. By the time a keydown
-// bubbles back out past the shadow boundary to `host`, the palette's own
-// (shadow-internal) handlers have already run, so stopping it here blocks
-// it from reaching the page's own document/window listeners without
-// affecting the palette itself.
+// Events from the closed shadow root are retargeted to `host` outside the
+// shadow tree. Stop them at the boundary after the palette's handlers run so
+// bubble-phase shortcuts on the host page cannot observe palette keystrokes.
+// Capture-phase page listeners run before the event reaches the shadow tree;
+// they cannot be blocked here without also preventing the palette from
+// receiving the event.
 function swallowKeyEvent(event: KeyboardEvent) {
   event.stopPropagation();
 }
