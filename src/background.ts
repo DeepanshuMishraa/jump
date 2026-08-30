@@ -11,21 +11,6 @@ function hostnameFor(url?: string) {
   }
 }
 
-async function captureTabPreview(tabId?: number, windowId?: number) {
-  if (tabId === undefined || windowId === undefined) return;
-  try {
-    const preview = await chrome.tabs.captureVisibleTab(windowId, {
-      format: "jpeg",
-      quality: 60,
-    });
-    if (preview) {
-      previewCache.set(tabId, preview);
-    }
-  } catch {
-    // Restricted browser pages cannot be captured.
-  }
-}
-
 async function sendToActiveTab(message: BrowserMessage) {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (tab?.id === undefined) return;
@@ -39,11 +24,7 @@ async function sendToActiveTab(message: BrowserMessage) {
           target: { tabId: tab.id },
           files: ["assets/content.js"],
         });
-        setTimeout(() => {
-          if (tab.id !== undefined) {
-            void chrome.tabs.sendMessage(tab.id, message).catch(() => {});
-          }
-        }, 50);
+        await chrome.tabs.sendMessage(tab.id, message);
       } catch {
         // Restricted page
       }
@@ -53,23 +34,25 @@ async function sendToActiveTab(message: BrowserMessage) {
 
 async function openTabSwitcher() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  let currentPreview: string | undefined;
 
-  if (tab?.windowId !== undefined && tab?.id !== undefined) {
-    try {
-      currentPreview = await chrome.tabs.captureVisibleTab(tab.windowId, {
-        format: "jpeg",
-        quality: 60,
-      });
-      if (currentPreview) {
-        previewCache.set(tab.id, currentPreview);
-      }
-    } catch {
-      // Restricted pages fallback to icons.
+  // Open the switcher before capturing a preview. captureVisibleTab can take
+  // long enough to make the shortcut feel unresponsive.
+  await sendToActiveTab({ type: "open-palette", mode: "switcher" });
+
+  if (tab?.windowId === undefined || tab.id === undefined) return;
+
+  try {
+    const currentPreview = await chrome.tabs.captureVisibleTab(tab.windowId, {
+      format: "jpeg",
+      quality: 60,
+    });
+    if (currentPreview) {
+      previewCache.set(tab.id, currentPreview);
+      await sendToActiveTab({ type: "update-switcher-preview", previewUrl: currentPreview });
     }
+  } catch {
+    // Restricted pages fallback to icons.
   }
-
-  await sendToActiveTab({ type: "open-palette", mode: "switcher", previewUrl: currentPreview });
 }
 
 async function getTabs(): Promise<PaletteTab[]> {
@@ -100,12 +83,6 @@ async function getTabs(): Promise<PaletteTab[]> {
       return (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0);
     });
 }
-
-chrome.tabs.onActivated.addListener((activeInfo) => {
-  setTimeout(() => {
-    void captureTabPreview(activeInfo.tabId, activeInfo.windowId);
-  }, 350);
-});
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   previewCache.delete(tabId);

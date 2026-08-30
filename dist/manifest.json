@@ -9,22 +9,20 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["tabs", "windows", "scripting", "activeTab"],
+  "permissions": ["tabs", "windows", "scripting", "activeTab", "storage"],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"
   },
   "action": {
-    "default_title": "Open Jump",
+    "default_title": "Jump Settings",
+    "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
     }
-  },
-  "chrome_url_overrides": {
-    "newtab": "index.html"
   },
   "commands": {
     "open-palette": {

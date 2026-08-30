@@ -1,3 +1,18 @@
+export type ColorTheme =
+  | "default"
+  | "catppuccin"
+  | "rose-pine"
+  | "tokyo-night"
+  | "nord"
+  | "gruvbox";
+
+export type ViewMode = "list" | "gallery";
+
+export type UserSettings = {
+  viewMode: ViewMode;
+  theme: ColorTheme;
+};
+
 export type PaletteTab = {
   id: number;
   windowId: number;
@@ -18,5 +33,9 @@ export type BrowserMessage =
   | { type: "open-url"; url: string }
   | { type: "open-shortcut-settings" }
   | { type: "open-palette"; mode?: "search" | "switcher"; previewUrl?: string }
-  | { type: "cycle-tab-switcher"; direction?: "next" | "prev" };
+  | { type: "update-switcher-preview"; previewUrl: string }
+  | { type: "cycle-tab-switcher"; direction?: "next" | "prev" }
+  | { type: "get-settings" }
+  | { type: "save-settings"; settings: Partial<UserSettings> };
+
 
