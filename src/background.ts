@@ -43,6 +43,7 @@ function parsePreviewEntries(value: unknown) {
 }
 
 function prunePreviewCache(now = Date.now()) {
+  const previousTabIds = new Set(previewCache.keys());
   const recentEntries = [...previewCache.values()]
     .filter((entry) => now - entry.capturedAt < PREVIEW_TTL_MS)
     .sort((a, b) => b.capturedAt - a.capturedAt);
@@ -56,11 +57,12 @@ function prunePreviewCache(now = Date.now()) {
     previewCache.set(entry.tabId, entry);
     totalCharacters += entry.dataUrl.length;
   }
+
+  return previousTabIds.size !== previewCache.size ||
+    [...previousTabIds].some((tabId) => !previewCache.has(tabId));
 }
 
-async function persistPreviewCache() {
-  await previewCacheReady;
-  prunePreviewCache();
+async function writePreviewCache() {
   try {
     await chrome.storage.session.set({
       [PREVIEW_CACHE_KEY]: [...previewCache.values()],
@@ -70,12 +72,18 @@ async function persistPreviewCache() {
   }
 }
 
+async function persistPreviewCache() {
+  await previewCacheReady;
+  prunePreviewCache();
+  await writePreviewCache();
+}
+
 const previewCacheReady = chrome.storage.session
   .get(PREVIEW_CACHE_KEY)
-  .then((stored) => {
+  .then(async (stored) => {
     const entries = parsePreviewEntries(stored[PREVIEW_CACHE_KEY]);
     entries.forEach((entry) => previewCache.set(entry.tabId, entry));
-    prunePreviewCache();
+    if (prunePreviewCache()) await writePreviewCache();
   })
   .catch(() => {});
 
@@ -157,7 +165,7 @@ async function getTabs(): Promise<PaletteTab[]> {
     chrome.windows.getAll({ populate: false }),
     previewCacheReady,
   ]);
-  prunePreviewCache();
+  if (prunePreviewCache()) await writePreviewCache();
 
   const focusedWindows = new Set(windows.filter((window) => window.focused).map((window) => window.id));
 

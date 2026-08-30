@@ -1,42 +1,113 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { openShortcutSettings } from "../browser";
+import { ArrowUpRightIcon, CommandIcon, GridIcon, ListIcon } from "../icons";
 import { DEFAULT_SETTINGS, getStoredSettings, saveStoredSettings } from "../settings";
 import type { UserSettings, ViewMode } from "../types";
+import { resolveSettingsRead } from "./settingsState";
+
+const VIEW_OPTIONS = [
+  { mode: "list", label: "List", Icon: ListIcon },
+  { mode: "gallery", label: "Gallery", Icon: GridIcon },
+] as const;
 
 export function Popup() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
+  const settingsRevision = useRef(0);
+  const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
+  const searchShortcut = isMac ? ["⌘", "⇧", "P"] : ["Ctrl", "Shift", "P"];
+  const switcherShortcut = isMac ? ["⌥", "Q"] : ["Alt", "Q"];
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
-    ? `v${chrome.runtime.getManifest().version}`
-    : "v0.1.0";
+    ? chrome.runtime.getManifest().version
+    : "0.1.1";
 
   useEffect(() => {
-    void getStoredSettings().then(setSettings);
+    const readRevision = settingsRevision.current;
+    void getStoredSettings().then((loaded) => {
+      setSettings((current) => resolveSettingsRead(
+        current,
+        loaded,
+        readRevision,
+        settingsRevision.current,
+      ));
+    });
   }, []);
 
   const updateViewMode = async (mode: ViewMode) => {
+    const saveRevision = settingsRevision.current + 1;
+    settingsRevision.current = saveRevision;
+    setSettings((current) => ({ ...current, viewMode: mode }));
     const next = await saveStoredSettings({ viewMode: mode });
-    setSettings(next);
+    if (settingsRevision.current === saveRevision) setSettings(next);
   };
 
   return (
-    <div className="popup-container">
-      <div className="popup-segmented">
-        <button
-          type="button"
-          className={`popup-segmented-item ${settings.viewMode === "list" ? "active" : ""}`}
-          onClick={() => void updateViewMode("list")}
-        >
-          List
-        </button>
-        <button
-          type="button"
-          className={`popup-segmented-item ${settings.viewMode === "gallery" ? "active" : ""}`}
-          onClick={() => void updateViewMode("gallery")}
-        >
-          Gallery
-        </button>
-      </div>
+    <main className="popup-container">
+      <header className="popup-header">
+        <div className="popup-brand">
+          <span className="popup-mark" aria-hidden="true">
+            <CommandIcon size={15} />
+          </span>
+          <div>
+            <div className="popup-title-row">
+              <h1 className="popup-title">Jump</h1>
+              <span className="popup-version">v{version}</span>
+            </div>
+            <p className="popup-tagline">Move through tabs without breaking focus.</p>
+          </div>
+        </div>
+      </header>
 
-      <div className="popup-version">{version}</div>
-    </div>
+      <section className="popup-section" aria-labelledby="default-view-label">
+        <div className="popup-section-heading">
+          <span id="default-view-label">Default view</span>
+          <span className="popup-section-context">Command palette</span>
+        </div>
+
+        <div className="popup-segmented" role="group" aria-label="Default command palette view">
+          {VIEW_OPTIONS.map(({ mode, label, Icon }) => {
+            const isActive = settings.viewMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                className={`popup-segmented-item ${isActive ? "active" : ""}`}
+                aria-pressed={isActive}
+                onClick={() => void updateViewMode(mode)}
+              >
+                <Icon size={14} />
+                <span>{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="popup-shortcuts" aria-label="Keyboard shortcuts">
+        <div className="popup-shortcut-row">
+          <span>Search tabs</span>
+          <span className="popup-key-group" aria-label={searchShortcut.join(" ")}>
+            {searchShortcut.map((key) => <kbd key={key}>{key}</kbd>)}
+          </span>
+        </div>
+        <div className="popup-shortcut-row">
+          <span>Visual switcher</span>
+          <span className="popup-key-group" aria-label={switcherShortcut.join(" ")}>
+            {switcherShortcut.map((key) => <kbd key={key}>{key}</kbd>)}
+          </span>
+        </div>
+      </section>
+
+      <button
+        type="button"
+        className="popup-settings-link"
+        onClick={() => {
+          void openShortcutSettings();
+          window.close();
+        }}
+      >
+        <span>Customize shortcuts</span>
+        <ArrowUpRightIcon size={12} />
+      </button>
+    </main>
   );
 }

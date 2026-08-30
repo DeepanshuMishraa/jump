@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent a
 import { activateTab, getTabs } from "./browser";
 import { ChevronDownIcon, GlobeIcon, XIcon } from "./icons";
 import { DEFAULT_SETTINGS, getStoredSettings, subscribeToSettings } from "./settings";
-import type { BrowserMessage, PaletteTab, UserSettings, ViewMode } from "./types";
+import type { BrowserMessage, PaletteTab, UserSettings } from "./types";
 
 function scoreTab(tab: PaletteTab, query: string) {
   if (!query) return tab.windowFocused ? 100 : tab.active ? 90 : tab.lastAccessed ? 50 : 10;
@@ -148,10 +148,10 @@ export function App({
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"search" | "switcher">(initialMode);
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [currentPreviewUrl, setCurrentPreviewUrl] = useState(previewUrl);
 
   const isSwitcher = mode === "switcher";
+  const isGallery = settings.viewMode === "gallery";
   const [isExpanded, setIsExpanded] = useState(isSwitcher);
   const [selectedIndex, setSelectedIndex] = useState(isSwitcher ? 1 : 0);
   const [isClosing, setIsClosing] = useState(false);
@@ -161,15 +161,8 @@ export function App({
 
   // Load and subscribe to persistent settings
   useEffect(() => {
-    void getStoredSettings().then((s) => {
-      setSettings(s);
-      setViewMode(s.viewMode);
-    });
-
-    return subscribeToSettings((s) => {
-      setSettings(s);
-      setViewMode(s.viewMode);
-    });
+    void getStoredSettings().then(setSettings);
+    return subscribeToSettings(setSettings);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -219,7 +212,9 @@ export function App({
       } else if (message.type === "open-palette") {
         if (message.mode === "switcher") {
           setMode("switcher");
-          setCurrentPreviewUrl(message.previewUrl);
+          if (message.previewUrl !== undefined) {
+            setCurrentPreviewUrl(message.previewUrl);
+          }
           setIsExpanded(true);
           setSelectedIndex((curr) => {
             if (tabs.length === 0) return 0;
@@ -308,7 +303,8 @@ export function App({
   useEffect(() => {
     if (isSwitcher && trackRef.current) {
       const activeEl = trackRef.current.querySelector(`[data-switcher-index="${selectedIndex}"]`);
-      activeEl?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+      const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth";
+      activeEl?.scrollIntoView({ behavior, inline: "center", block: "nearest" });
     }
   }, [selectedIndex, isSwitcher]);
 
@@ -355,16 +351,26 @@ export function App({
       return;
     }
 
-    if (event.key === "ArrowDown" || (event.key.toLowerCase() === "j" && (event.metaKey || event.ctrlKey))) {
+    if (isGallery && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      event.preventDefault();
+      const direction = event.key === "ArrowRight" ? 1 : -1;
+      setSelectedIndex((index) => Math.max(0, Math.min(index + direction, items.length - 1)));
+    } else if (event.key === "ArrowDown" || (event.key.toLowerCase() === "j" && (event.metaKey || event.ctrlKey))) {
       event.preventDefault();
       setIsExpanded(true);
-      setSelectedIndex((index) => (items.length ? (index + 1) % items.length : 0));
+      const step = isGallery ? 2 : 1;
+      setSelectedIndex((index) => isGallery
+        ? Math.min(index + step, Math.max(0, items.length - 1))
+        : items.length ? (index + step) % items.length : 0);
     } else if (event.key === "ArrowUp" || (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey))) {
       event.preventDefault();
-      if (selectedIndex === 0 && !query) {
+      if (selectedIndex === 0 && !query && !isGallery) {
         setIsExpanded(false);
       } else {
-        setSelectedIndex((index) => (items.length ? (index - 1 + items.length) % items.length : 0));
+        const step = isGallery ? 2 : 1;
+        setSelectedIndex((index) => isGallery
+          ? Math.max(index - step, 0)
+          : items.length ? (index - step + items.length) % items.length : 0);
       }
     } else if (event.key === "Enter") {
       event.preventDefault();
@@ -412,7 +418,6 @@ export function App({
   // Minimal Search Mode (Command + Shift + P)
   // By default, initially only shows the search input bar.
   // Expands only when user types or presses Down arrow.
-  const isGallery = viewMode === "gallery";
   const showDropdown = isExpanded || Boolean(query.trim());
 
   return (

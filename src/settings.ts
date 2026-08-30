@@ -65,58 +65,158 @@ export const THEMES: ThemeInfo[] = [
   },
 ];
 
-export async function getStoredSettings(): Promise<UserSettings> {
-  try {
-    if (typeof chrome !== "undefined" && chrome.storage?.sync) {
-      const data = await chrome.storage.sync.get(["viewMode", "theme"]);
-      return {
-        viewMode: (data.viewMode as ViewMode) || DEFAULT_SETTINGS.viewMode,
-        theme: (data.theme as ColorTheme) || DEFAULT_SETTINGS.theme,
-      };
-    }
-  } catch {
-    // Fallback to localStorage if chrome.storage is unavailable
-  }
+const LOCAL_SETTINGS_KEY = "jump_settings";
+type SettingsBackend = "sync" | "localStorage";
 
-  try {
-    const raw = localStorage.getItem("jump_settings");
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return { ...DEFAULT_SETTINGS, ...parsed };
-    }
-  } catch {}
+let selectedBackend: SettingsBackend | undefined;
+let saveQueue = Promise.resolve<UserSettings>(DEFAULT_SETTINGS);
+const subscribers = new Set<(settings: UserSettings) => void>();
 
-  return DEFAULT_SETTINGS;
+function isViewMode(value: unknown): value is ViewMode {
+  return value === "list" || value === "gallery";
 }
 
-export async function saveStoredSettings(partial: Partial<UserSettings>): Promise<UserSettings> {
-  const current = await getStoredSettings();
-  const next: UserSettings = { ...current, ...partial };
+function isColorTheme(value: unknown): value is ColorTheme {
+  return value === "default" ||
+    value === "catppuccin" ||
+    value === "rose-pine" ||
+    value === "tokyo-night" ||
+    value === "nord" ||
+    value === "gruvbox";
+}
 
+export function parseStoredSettings(value: unknown): UserSettings {
+  if (typeof value !== "object" || value === null) return DEFAULT_SETTINGS;
+
+  const viewMode = "viewMode" in value && isViewMode(value.viewMode)
+    ? value.viewMode
+    : DEFAULT_SETTINGS.viewMode;
+  const theme = "theme" in value && isColorTheme(value.theme)
+    ? value.theme
+    : DEFAULT_SETTINGS.theme;
+
+  return { viewMode, theme };
+}
+
+function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
+  if (typeof value !== "object" || value === null) return {};
+
+  return {
+    ...("viewMode" in value && isViewMode(value.viewMode) ? { viewMode: value.viewMode } : {}),
+    ...("theme" in value && isColorTheme(value.theme) ? { theme: value.theme } : {}),
+  };
+}
+
+function canUseSyncStorage() {
+  return typeof chrome !== "undefined" && chrome.storage?.sync !== undefined;
+}
+
+function usesLocalStorage() {
+  return selectedBackend === "localStorage";
+}
+
+async function readSyncSettings() {
+  if (!canUseSyncStorage()) throw new Error("Sync storage is unavailable");
+  const stored: unknown = await chrome.storage.sync.get(["viewMode", "theme"]);
+  return parseStoredSettings(stored);
+}
+
+function readLocalSettings() {
   try {
-    if (typeof chrome !== "undefined" && chrome.storage?.sync) {
-      await chrome.storage.sync.set(next);
+    const raw = localStorage.getItem(LOCAL_SETTINGS_KEY);
+    if (raw === null) return DEFAULT_SETTINGS;
+    const parsed: unknown = JSON.parse(raw);
+    return parseStoredSettings(parsed);
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+function writeLocalSettings(settings: UserSettings) {
+  try {
+    localStorage.setItem(LOCAL_SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // The validated settings remain available to the current caller.
+  }
+}
+
+function notifySubscribers(settings: UserSettings) {
+  subscribers.forEach((callback) => callback(settings));
+}
+
+export async function getStoredSettings(): Promise<UserSettings> {
+  if (selectedBackend === "localStorage") return readLocalSettings();
+
+  if (canUseSyncStorage()) {
+    try {
+      const settings = await readSyncSettings();
+      if (usesLocalStorage()) return readLocalSettings();
+      selectedBackend = "sync";
+      return settings;
+    } catch {
+      selectedBackend = "localStorage";
+      return readLocalSettings();
     }
-  } catch {}
+  }
 
-  try {
-    localStorage.setItem("jump_settings", JSON.stringify(next));
-  } catch {}
+  selectedBackend = "localStorage";
+  return readLocalSettings();
+}
 
+async function saveSettings(partial: Partial<UserSettings>) {
+  const current = await getStoredSettings();
+  const update = parseSettingsUpdate(partial);
+  const next: UserSettings = { ...current, ...update };
+
+  if (selectedBackend === "sync" && canUseSyncStorage()) {
+    try {
+      await chrome.storage.sync.set(update);
+      return next;
+    } catch {
+      selectedBackend = "localStorage";
+    }
+  }
+
+  writeLocalSettings(next);
+  notifySubscribers(next);
   return next;
 }
 
+export function saveStoredSettings(partial: Partial<UserSettings>): Promise<UserSettings> {
+  const pendingSave = saveQueue.then(
+    () => saveSettings(partial),
+    () => saveSettings(partial),
+  );
+  saveQueue = pendingSave;
+  return pendingSave;
+}
+
 export function subscribeToSettings(callback: (settings: UserSettings) => void) {
-  const listener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
-    if (areaName === "sync" || areaName === "local") {
-      void getStoredSettings().then(callback);
-    }
+  subscribers.add(callback);
+
+  const syncListener = (_changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+    if (areaName !== "sync" || selectedBackend === "localStorage") return;
+    void getStoredSettings().then(callback);
+  };
+  const localListener = (event: StorageEvent) => {
+    if (event.key !== LOCAL_SETTINGS_KEY || selectedBackend === "sync") return;
+    callback(readLocalSettings());
   };
 
   if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
-    chrome.storage.onChanged.addListener(listener);
-    return () => chrome.storage.onChanged.removeListener(listener);
+    chrome.storage.onChanged.addListener(syncListener);
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", localListener);
   }
 
-  return () => {};
+  return () => {
+    subscribers.delete(callback);
+    if (typeof chrome !== "undefined" && chrome.storage?.onChanged) {
+      chrome.storage.onChanged.removeListener(syncListener);
+    }
+    if (typeof window !== "undefined") {
+      window.removeEventListener("storage", localListener);
+    }
+  };
 }
