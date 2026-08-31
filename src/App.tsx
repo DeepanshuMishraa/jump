@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { activateTab, getTabs, openUrl, searchWeb } from "./browser";
-import { ChevronDownIcon, GlobeIcon, SearchIcon, XIcon } from "./icons";
+import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { DEFAULT_SETTINGS, getStoredSettings, subscribeToSettings } from "./settings";
@@ -428,7 +428,7 @@ export function App({
       >
         {/* Elevated 3D Search Bar Input Row */}
         <div className="search-bar-row">
-          <SearchIcon size={20} className="search-bar-icon" />
+          <SearchIcon size={17} className="search-lead-icon" />
           <input
             ref={inputRef}
             type="text"
@@ -445,7 +445,7 @@ export function App({
               }
             }}
             onKeyDown={handleSearchKeyDown}
-            placeholder="Search or enter URL..."
+            placeholder="Search or Enter URL..."
             aria-label="Search tabs, URLs, or the web"
             autoComplete="off"
             spellCheck="false"
@@ -476,7 +476,7 @@ export function App({
               aria-label={showDropdown ? "Hide open tabs" : "Show open tabs"}
               title={showDropdown ? "Hide open tabs" : "Show open tabs"}
             >
-              <ChevronDownIcon size={14} />
+              <InfoIcon size={15} />
             </button>
           )}
         </div>
@@ -542,33 +542,28 @@ export function App({
                       onMouseEnter={() => setSelectedIndex(index)}
                       onClick={() => executeResult(result)}
                     >
-                      <TabFavicon tab={tab} />
-                      <div className="row-content">
-                        <span className="row-title">{tab.title}</span>
-                        <span className="row-subtitle">{tab.hostname || tab.url}</span>
+                      <div className="list-row-left">
+                        <span className="tab-favicon-wrapper">
+                          <TabFavicon tab={tab} size={18} />
+                        </span>
+                        <div className="row-content">
+                          <span className="row-title">{tab.title}</span>
+                          {tab.hostname && tab.hostname !== tab.title && (
+                            <span className="row-domain">— {tab.hostname}</span>
+                          )}
+                        </div>
                       </div>
-                      {tab.active && tab.windowFocused && <span className="status-badge">Current</span>}
-                      {tab.pinned && <span className="status-badge">Pinned</span>}
+
+                      <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
+                        <span className="action-text">Switch to Tab</span>
+                        <span className="action-arrow-badge">
+                          <ArrowRightIcon size={12} />
+                        </span>
+                      </div>
                     </div>
                   );
                 })
               )}
-            </div>
-
-            {/* Clean, minimal footer */}
-            <div className="palette-footer">
-              <div className="footer-group">
-                <span className="meta-count">
-                  {tabs.length} {tabs.length === 1 ? "tab" : "tabs"}
-                </span>
-              </div>
-
-              <div className="footer-keys">
-                <kbd>↑</kbd>
-                <kbd>↓</kbd>
-                <kbd>↵</kbd>
-                <kbd>esc</kbd>
-              </div>
             </div>
           </>
         )}

@@ -1,4 +1,4 @@
-import { SearchIcon } from "./icons";
+import { ArrowRightIcon, GlobeIcon, SearchIcon } from "./icons";
 import type { SearchResult } from "./paletteSearch";
 
 export function PaletteAction({
@@ -14,8 +14,10 @@ export function PaletteAction({
   onClick: () => void;
   onMouseEnter: () => void;
 }) {
-  const title = result.kind === "url" ? "Open in new tab" : `Search for "${result.query}"`;
-  const subtitle = result.kind === "url" ? result.url : "Use your browser's default search engine";
+  const isUrl = result.kind === "url";
+  const title = isUrl ? result.url : result.query;
+  const domain = isUrl ? "Open URL" : "Search on Web";
+  const actionLabel = isUrl ? "Open URL" : "Search";
 
   return (
     <div
@@ -26,10 +28,21 @@ export function PaletteAction({
       onMouseEnter={onMouseEnter}
       onClick={onClick}
     >
-      <SearchIcon size={18} />
-      <div className="row-content">
-        <span className="row-title">{title}</span>
-        <span className="row-subtitle">{subtitle}</span>
+      <div className="list-row-left">
+        <span className="action-icon-badge">
+          {isUrl ? <GlobeIcon size={16} /> : <SearchIcon size={16} />}
+        </span>
+        <div className="row-content">
+          <span className="row-title">{title}</span>
+          <span className="row-domain">— {domain}</span>
+        </div>
+      </div>
+
+      <div className={`list-row-action ${isSelected ? "active" : ""}`}>
+        <span className="action-text">{actionLabel}</span>
+        <span className="action-arrow-badge">
+          <ArrowRightIcon size={12} />
+        </span>
       </div>
     </div>
   );
