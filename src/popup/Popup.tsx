@@ -19,7 +19,7 @@ export function Popup() {
   const defaultSwitcherShortcut = isMac ? "⌥Q" : "Alt Q";
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
     ? chrome.runtime.getManifest().version
-    : "0.1.1";
+    : "0.1.2";
 
   useEffect(() => {
     const readRevision = settingsRevision.current;
