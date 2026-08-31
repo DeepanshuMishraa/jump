@@ -557,12 +557,24 @@ button {
   border-color: rgba(255, 255, 255, 0.06);
 }
 
+.list-row:not(.selected) .list-row-action {
+  visibility: hidden;
+}
+
 .list-row-left {
   display: flex;
   align-items: center;
   gap: 12px;
   flex: 1;
   min-width: 0;
+}
+
+.history-favicon {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: contain;
+  overflow: hidden;
 }
 
 .tab-favicon-wrapper {

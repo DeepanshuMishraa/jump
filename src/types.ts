@@ -29,6 +29,7 @@ export type PaletteTab = {
 
 export type BrowserMessage =
   | { type: "get-tabs" }
+  | { type: "search-history"; query: string; maxResults?: number }
   | { type: "activate-tab"; tab: PaletteTab }
   | { type: "open-url"; url: string }
   | { type: "search-web"; query: string }

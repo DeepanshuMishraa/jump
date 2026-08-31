@@ -235,6 +235,24 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResp
     return true;
   }
 
+  if (message.type === "search-history") {
+    void chrome.history.search({ text: message.query, maxResults: Math.min(message.maxResults ?? 8, 5) })
+      .then((items) => items
+        .filter((item): item is chrome.history.HistoryItem & { id: string; url: string } =>
+          typeof item.id === "string" && typeof item.url === "string" && item.url !== ""
+        )
+        .map((item) => ({
+          id: item.id,
+          url: item.url,
+          title: item.title?.trim() || item.url,
+          faviconUrl: "faviconUrl" in item && typeof item.faviconUrl === "string" ? item.faviconUrl : undefined,
+          lastVisitTime: item.lastVisitTime,
+        }))
+      )
+      .then(sendResponse);
+    return true;
+  }
+
   if (message.type === "activate-tab") {
     void chrome.tabs.update(message.tab.id, { active: true })
       .then(() => chrome.windows.update(message.tab.windowId, { focused: true }))

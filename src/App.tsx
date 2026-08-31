@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { activateTab, getTabs, openUrl, searchWeb } from "./browser";
+import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, type BrowserHistoryItem } from "./browser";
 import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
+import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
 import { DEFAULT_SETTINGS, getStoredSettings, subscribeToSettings } from "./settings";
 import type { BrowserMessage, PaletteTab, UserSettings } from "./types";
 
@@ -133,6 +134,9 @@ export function App({
   previewUrl?: string;
 }) {
   const [tabs, setTabs] = useState<PaletteTab[]>([]);
+  const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
+  const [recentBrowserHistory, setRecentBrowserHistory] = useState<BrowserHistoryItem[]>([]);
+  const [browserHistory, setBrowserHistory] = useState<BrowserHistoryItem[]>([]);
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"search" | "switcher">(initialMode);
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
@@ -150,8 +154,30 @@ export function App({
   // Load and subscribe to persistent settings
   useEffect(() => {
     void getStoredSettings().then(setSettings);
+    void getSearchHistory().then(setHistory);
+    void getBrowserHistory("", 5).then(setRecentBrowserHistory).catch(() => {});
     return subscribeToSettings(setSettings);
   }, []);
+
+  useEffect(() => {
+    const trimmed = query.trim().toLowerCase();
+    const localMatches = trimmed
+      ? recentBrowserHistory.filter((item) => `${item.title} ${item.url}`.toLowerCase().includes(trimmed))
+      : [];
+    setBrowserHistory(localMatches);
+    if (!trimmed) return;
+
+    let cancelled = false;
+    void getBrowserHistory(trimmed).then((items) => {
+      if (!cancelled) {
+        const seen = new Set(localMatches.map((item) => item.id));
+        setBrowserHistory([...localMatches, ...items.filter((item) => !seen.has(item.id))]);
+      }
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [query, recentBrowserHistory]);
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -245,14 +271,24 @@ export function App({
     if (!result) return;
     if (result.kind === "tab") {
       void switchTab(result.tab);
-    } else if (result.kind === "url" || result.kind === "bang") {
-      void openUrl(result.url);
-      handleClose();
-    } else {
-      void searchWeb(result.query);
-      handleClose();
+      return;
     }
-  }, [handleClose, switchTab]);
+
+    if (result.kind === "visited") {
+      void openUrl(result.item.url);
+      handleClose();
+      return;
+    }
+
+    const input = result.kind === "history" ? result.query : query;
+    const action = result.kind === "history" ? buildSearchResults([], result.query)[0] : result;
+    if (!action || action.kind === "tab" || action.kind === "history" || action.kind === "visited") return;
+
+    void recordSearch(input).then(() => getSearchHistory().then(setHistory));
+    if (action.kind === "url" || action.kind === "bang") void openUrl(action.url);
+    else void searchWeb(action.query);
+    handleClose();
+  }, [handleClose, switchTab, query]);
 
   // Global keyup/keydown handler for releasing Alt key and cycling in switcher mode
   useEffect(() => {
@@ -311,7 +347,7 @@ export function App({
   }, [selectedIndex, isSwitcher]);
 
   // Search open tabs, then offer one web-search action.
-  const results = useMemo(() => buildSearchResults(tabs, query), [query, tabs]);
+  const results = useMemo(() => buildSearchResults(tabs, query, history, browserHistory), [query, tabs, history, browserHistory]);
 
   // Adjust selected index bounds for search list
   useEffect(() => {

@@ -1,10 +1,14 @@
 import type { PaletteTab } from "./types";
+import type { BrowserHistoryItem } from "./browser";
+import type { SearchHistoryEntry } from "./searchHistory";
 
 export type SearchResult =
   | { kind: "tab"; tab: PaletteTab }
   | { kind: "search"; query: string }
   | { kind: "url"; url: string }
-  | { kind: "bang"; bang: string; label: string; query: string; url: string };
+  | { kind: "bang"; bang: string; label: string; query: string; url: string }
+  | { kind: "history"; query: string; usedAt: number }
+  | { kind: "visited"; item: BrowserHistoryItem };
 
 const BANGS: Record<string, { label: string; buildUrl: (query: string) => string }> = {
   g: { label: "Google", buildUrl: (query) => `https://www.google.com/search?q=${encodeURIComponent(query)}` },
@@ -73,14 +77,29 @@ export function searchTabs(tabs: PaletteTab[], query: string) {
     .map(({ tab }) => tab);
 }
 
-export function buildSearchResults(tabs: PaletteTab[], query: string): SearchResult[] {
+function searchActionFor(query: string): Exclude<SearchResult, { kind: "tab" | "history" }> {
+  const bang = parseBang(query);
+  if (bang) return { kind: "bang", bang: bang.bang, label: bang.label, query: bang.query, url: bang.url };
+  const url = browserUrlFor(query);
+  if (url) return { kind: "url", url };
+  return { kind: "search", query };
+}
+
+export function buildSearchResults(
+  tabs: PaletteTab[],
+  query: string,
+  history: SearchHistoryEntry[] = [],
+  browserHistory: BrowserHistoryItem[] = [],
+): SearchResult[] {
   const trimmed = query.trim();
   const tabResults = searchTabs(tabs, trimmed).map((tab) => ({ kind: "tab" as const, tab }));
   if (!trimmed) return tabResults;
 
-  const bang = parseBang(trimmed);
-  if (bang) return [...tabResults, { kind: "bang", bang: bang.bang, label: bang.label, query: bang.query, url: bang.url }];
-  const url = browserUrlFor(trimmed);
-  if (url) return [...tabResults, { kind: "url", url }];
-  return [...tabResults, { kind: "search", query: trimmed }];
+  const action = searchActionFor(trimmed);
+  if (tabResults.length > 0) return [...tabResults, action];
+  const matchingHistory = history
+    .filter((entry) => entry.query.toLowerCase().includes(trimmed.toLowerCase()))
+    .map((entry) => ({ kind: "history" as const, query: entry.query, usedAt: entry.usedAt }));
+  const visitedResults = browserHistory.slice(0, 5).map((item) => ({ kind: "visited" as const, item }));
+  return [action, ...[...visitedResults, ...matchingHistory].slice(0, 5)];
 }
