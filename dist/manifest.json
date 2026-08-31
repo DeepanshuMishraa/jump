@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Jump",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Jump between open tabs with a fast, keyboard-first command palette.",
   "icons": {
     "16": "icons/icon16.png",
@@ -9,7 +9,7 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["tabs", "windows", "scripting", "activeTab", "storage"],
+  "permissions": ["tabs", "windows", "scripting", "activeTab", "storage", "search"],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"

@@ -4,12 +4,12 @@
 
 > **Limitations**
 > 1. Jump cannot run on protected browser pages such as `chrome://settings`, `chrome://extensions`, the Chrome Web Store, or some built-in browser pages. It works on regular webpages and Jump’s new-tab page.
-> 2. `Ctrl+Tab` cannot be mapped directly to Jump because Chrome reserves it as a browser shortcut, and browser/OS shortcuts take priority over extension shortcuts. Jump uses `Alt+Q` instead; it may feel unfamiliar at first, but quickly becomes second nature.
+> 2. `Alt+Q` is the default visual-switcher shortcut because Chrome may reject `Ctrl+Tab` as an extension shortcut. You can try assigning `Ctrl+Tab` manually at `chrome://extensions/shortcuts`.
 
 A keyboard-first Chromium extension with two fast ways to switch tabs:
 
 - **Thumbnail switcher** — press `Alt+Q` to browse open tabs visually.
-- **Search palette** — press `⌘ Shift P` on macOS or `Ctrl Shift P` on Windows/Linux to search tabs by title or URL.
+- **Search palette** — press `⌘ Shift P` on macOS or `Ctrl Shift P` on Windows/Linux to search open tabs or run a web search.
 
 ## Install
 

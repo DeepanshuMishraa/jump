@@ -16,3 +16,7 @@ export async function openUrl(url: string) {
   await chrome.runtime.sendMessage({ type: "open-url", url } satisfies BrowserMessage);
 }
 
+export async function searchWeb(query: string) {
+  await chrome.runtime.sendMessage({ type: "search-web", query } satisfies BrowserMessage);
+}
+
