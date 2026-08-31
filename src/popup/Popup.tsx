@@ -16,7 +16,7 @@ export function Popup() {
   const settingsRevision = useRef(0);
   const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
   const defaultSearchShortcut = isMac ? "⌘ ⇧ P" : "Ctrl Shift P";
-  const defaultSwitcherShortcut = isMac ? "⌥ Q" : "Alt Q";
+  const defaultSwitcherShortcut = "Ctrl Tab";
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
     ? chrome.runtime.getManifest().version
     : "0.1.1";
