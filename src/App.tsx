@@ -245,7 +245,7 @@ export function App({
     if (!result) return;
     if (result.kind === "tab") {
       void switchTab(result.tab);
-    } else if (result.kind === "bang") {
+    } else if (result.kind === "url" || result.kind === "bang") {
       void openUrl(result.url);
       handleClose();
     } else {

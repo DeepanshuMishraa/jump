@@ -3,6 +3,7 @@ import type { PaletteTab } from "./types";
 export type SearchResult =
   | { kind: "tab"; tab: PaletteTab }
   | { kind: "search"; query: string }
+  | { kind: "url"; url: string }
   | { kind: "bang"; bang: string; label: string; query: string; url: string };
 
 const BANGS: Record<string, { label: string; buildUrl: (query: string) => string }> = {
@@ -16,12 +17,33 @@ const BANGS: Record<string, { label: string; buildUrl: (query: string) => string
   mdn: { label: "MDN", buildUrl: (query) => `https://developer.mozilla.org/en-US/search?q=${encodeURIComponent(query)}` },
 };
 
+export function browserUrlFor(input: string) {
+  const value = input.trim();
+  if (!value) return undefined;
+
+  if (/^https?:\/\//i.test(value)) {
+    try {
+      const url = new URL(value);
+      return url.hostname ? url.toString() : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  if (/^(?:localhost|127\.0\.0\.1)(?::\d+)?(?:[/?#].*)?$/i.test(value)) return `http://${value}`;
+  if (/^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::\d+)?(?:[/?#].*)?$/i.test(value)) {
+    return `https://${value}`;
+  }
+  return undefined;
+}
+
 export function parseBang(input: string) {
   const match = input.trim().match(/^!(\S+)\s+(.+)$/);
   if (!match) return undefined;
   const [, bang, query] = match;
-  const provider = BANGS[bang.toLowerCase()];
-  if (!provider || !query.trim()) return undefined;
+  const key = bang.toLowerCase();
+  if (!Object.prototype.hasOwnProperty.call(BANGS, key) || !query.trim()) return undefined;
+  const provider = BANGS[key];
   return { bang: bang.toLowerCase(), label: provider.label, query: query.trim(), url: provider.buildUrl(query.trim()) };
 }
 
@@ -58,5 +80,7 @@ export function buildSearchResults(tabs: PaletteTab[], query: string): SearchRes
 
   const bang = parseBang(trimmed);
   if (bang) return [...tabResults, { kind: "bang", bang: bang.bang, label: bang.label, query: bang.query, url: bang.url }];
+  const url = browserUrlFor(trimmed);
+  if (url) return [...tabResults, { kind: "url", url }];
   return [...tabResults, { kind: "search", query: trimmed }];
 }

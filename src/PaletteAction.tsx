@@ -15,9 +15,10 @@ export function PaletteAction({
   onMouseEnter: () => void;
 }) {
   const isBang = result.kind === "bang";
-  const title = isBang ? `${result.query}` : result.query;
-  const domain = isBang ? `${result.label} (!${result.bang})` : "Search on Web";
-  const actionLabel = isBang ? "Open search" : "Search";
+  const isUrl = result.kind === "url";
+  const title = isBang || isUrl ? (isBang ? result.query : result.url) : result.query;
+  const domain = isBang ? `${result.label} (!${result.bang})` : isUrl ? "Open URL" : "Search on Web";
+  const actionLabel = isBang || isUrl ? "Open" : "Search";
 
   return (
     <div
@@ -30,7 +31,7 @@ export function PaletteAction({
     >
       <div className="list-row-left">
         <span className="action-icon-badge">
-          {isBang ? <GlobeIcon size={16} /> : <SearchIcon size={16} />}
+          {isBang || isUrl ? <GlobeIcon size={16} /> : <SearchIcon size={16} />}
         </span>
         <div className="row-content">
           <span className="row-title">{title}</span>

@@ -195,19 +195,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 async function openSearchPalette() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab) return;
-  if (tab.id !== undefined && tab.windowId !== undefined) {
-    await capturePreview(tab.id, tab.windowId);
-  }
 
-  const [currentTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const preview = tab.id !== undefined ? previewCache.get(tab.id) : undefined;
-  const previewUrl = currentTab?.id === tab.id && currentTab.url === preview?.url
-    ? preview?.dataUrl
-    : undefined;
-
-  if (currentTab) {
-    await sendToTab(currentTab, { type: "open-palette", mode: "search", previewUrl });
-  }
+  // Search mode does not need a fresh screenshot. Open it immediately and let
+  // the switcher own screenshot capture, so the command never feels delayed.
+  await sendToTab(tab, { type: "open-palette", mode: "search" });
 }
 
 async function openTabSwitcher() {
