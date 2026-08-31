@@ -112,8 +112,10 @@ export function Popup() {
       <button
         type="button"
         className="popup-settings-link"
-        onClick={() => {
-          void openShortcutSettings();
+        onClick={async () => {
+          // Keep the popup alive until the service worker has created the tab.
+          // Closing first races the runtime message and makes the click flaky.
+          await openShortcutSettings();
           window.close();
         }}
       >
