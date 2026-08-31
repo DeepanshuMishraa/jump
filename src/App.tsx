@@ -1,22 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { activateTab, getTabs } from "./browser";
-import { ChevronDownIcon, GlobeIcon, XIcon } from "./icons";
+import { activateTab, getTabs, openUrl, searchWeb } from "./browser";
+import { ChevronDownIcon, GlobeIcon, SearchIcon, XIcon } from "./icons";
+import { PaletteAction } from "./PaletteAction";
+import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { DEFAULT_SETTINGS, getStoredSettings, subscribeToSettings } from "./settings";
 import type { BrowserMessage, PaletteTab, UserSettings } from "./types";
-
-function scoreTab(tab: PaletteTab, query: string) {
-  if (!query) return tab.windowFocused ? 100 : tab.active ? 90 : tab.lastAccessed ? 50 : 10;
-  const normalized = query.toLowerCase();
-  const title = tab.title.toLowerCase();
-  const hostname = tab.hostname.toLowerCase();
-  const url = tab.url.toLowerCase();
-  if (title === normalized || hostname === normalized) return 1000;
-  if (title.startsWith(normalized) || hostname.startsWith(normalized)) return 800;
-  if (title.includes(normalized)) return 600;
-  if (hostname.includes(normalized)) return 500;
-  if (url.includes(normalized)) return 300;
-  return -1;
-}
 
 function TabFavicon({ tab, size = 16 }: { tab: PaletteTab; size?: number }) {
   const [failed, setFailed] = useState(false);
@@ -222,6 +210,7 @@ export function App({
           });
         } else {
           setMode("search");
+          if (message.previewUrl !== undefined) setCurrentPreviewUrl(message.previewUrl);
           setIsExpanded(false);
           setQuery("");
           setTimeout(() => inputRef.current?.focus(), 50);
@@ -251,6 +240,19 @@ export function App({
     },
     [handleClose]
   );
+
+  const executeResult = useCallback((result?: SearchResult) => {
+    if (!result) return;
+    if (result.kind === "tab") {
+      void switchTab(result.tab);
+    } else if (result.kind === "url") {
+      void openUrl(result.url);
+      handleClose();
+    } else {
+      void searchWeb(result.query);
+      handleClose();
+    }
+  }, [handleClose, switchTab]);
 
   // Global keyup/keydown handler for releasing Alt key and cycling in switcher mode
   useEffect(() => {
@@ -308,29 +310,22 @@ export function App({
     }
   }, [selectedIndex, isSwitcher]);
 
-  // Filter open tabs strictly
-  const items = useMemo<PaletteTab[]>(() => {
-    const trimmed = query.trim();
-    return tabs
-      .map((tab, index) => ({ tab, score: scoreTab(tab, trimmed), index }))
-      .filter((entry) => entry.score >= 0)
-      .sort((a, b) => b.score - a.score || a.index - b.index)
-      .map(({ tab }) => tab);
-  }, [query, tabs]);
+  // Search open tabs, then offer browser-style URL and web-search actions.
+  const results = useMemo(() => buildSearchResults(tabs, query), [query, tabs]);
 
   // Adjust selected index bounds for search list
   useEffect(() => {
     if (!isSwitcher) {
-      setSelectedIndex((index) => Math.min(index, Math.max(0, items.length - 1)));
+      setSelectedIndex((index) => Math.min(index, Math.max(0, results.length - 1)));
     }
-  }, [items.length, isSwitcher]);
+  }, [results.length, isSwitcher]);
 
   // Ensure selected item is visible in search list
   useEffect(() => {
-    if (isSwitcher || !isExpanded || items.length === 0) return;
+    if (isSwitcher || !isExpanded || results.length === 0) return;
     const activeEl = listRef.current?.querySelector(`[data-index="${selectedIndex}"]`);
     activeEl?.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex, isExpanded, items.length, isSwitcher]);
+  }, [selectedIndex, isExpanded, results.length, isSwitcher]);
 
   function handleSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
@@ -354,29 +349,27 @@ export function App({
     if (isGallery && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
       event.preventDefault();
       const direction = event.key === "ArrowRight" ? 1 : -1;
-      setSelectedIndex((index) => Math.max(0, Math.min(index + direction, items.length - 1)));
+      setSelectedIndex((index) => Math.max(0, Math.min(index + direction, results.length - 1)));
     } else if (event.key === "ArrowDown" || (event.key.toLowerCase() === "j" && (event.metaKey || event.ctrlKey))) {
       event.preventDefault();
       setIsExpanded(true);
       const step = isGallery ? 2 : 1;
       setSelectedIndex((index) => isGallery
-        ? Math.min(index + step, Math.max(0, items.length - 1))
-        : items.length ? (index + step) % items.length : 0);
+        ? Math.min(index + step, Math.max(0, results.length - 1))
+        : results.length ? (index + step) % results.length : 0);
     } else if (event.key === "ArrowUp" || (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey))) {
       event.preventDefault();
-      if (selectedIndex === 0 && !query && !isGallery) {
+      const step = isGallery ? 2 : 1;
+      if (selectedIndex < step && !query) {
         setIsExpanded(false);
       } else {
-        const step = isGallery ? 2 : 1;
         setSelectedIndex((index) => isGallery
           ? Math.max(index - step, 0)
-          : items.length ? (index - step + items.length) % items.length : 0);
+          : results.length ? (index - step + results.length) % results.length : 0);
       }
     } else if (event.key === "Enter") {
       event.preventDefault();
-      if (items.length > 0 && items[selectedIndex]) {
-        void switchTab(items[selectedIndex]);
-      }
+      executeResult(results[selectedIndex]);
     }
   }
 
@@ -435,6 +428,7 @@ export function App({
       >
         {/* Elevated 3D Search Bar Input Row */}
         <div className="search-bar-row">
+          <SearchIcon size={20} className="search-bar-icon" />
           <input
             ref={inputRef}
             type="text"
@@ -443,13 +437,16 @@ export function App({
             onChange={(event) => {
               const val = event.target.value;
               setQuery(val);
+              // Start each new query at the best open-tab match. The web search
+              // action becomes the default only when no tab matches.
+              setSelectedIndex(0);
               if (val.trim()) {
                 setIsExpanded(true);
               }
             }}
             onKeyDown={handleSearchKeyDown}
-            placeholder="Search open tabs..."
-            aria-label="Search open tabs"
+            placeholder="Search or enter URL..."
+            aria-label="Search tabs, URLs, or the web"
             autoComplete="off"
             spellCheck="false"
           />
@@ -493,25 +490,47 @@ export function App({
               ref={listRef}
               role="listbox"
             >
-              {items.length === 0 ? (
+              {results.length === 0 ? (
                 <div className="empty-state">
                   <span>No matching tabs</span>
                 </div>
               ) : isGallery ? (
-                items.map((tab, index) => (
+                results.map((result, index) => result.kind === "tab" ? (
                   <GalleryCard
-                    key={`gal-${tab.windowId}-${tab.id}`}
-                    tab={tab}
+                    key={`gal-${result.tab.windowId}-${result.tab.id}`}
+                    tab={result.tab}
                     index={index}
                     isSelected={index === selectedIndex}
                     previewUrl={currentPreviewUrl}
-                    onClick={() => void switchTab(tab)}
+                    onClick={() => executeResult(result)}
                     onMouseEnter={() => setSelectedIndex(index)}
+                  />
+                ) : (
+                  <PaletteAction
+                    key={`${result.kind}-${index}`}
+                    result={result}
+                    index={index}
+                    isSelected={index === selectedIndex}
+                    onMouseEnter={() => setSelectedIndex(index)}
+                    onClick={() => executeResult(result)}
                   />
                 ))
               ) : (
-                items.map((tab, index) => {
+                results.map((result, index) => {
                   const isSelected = index === selectedIndex;
+                  if (result.kind !== "tab") {
+                    return (
+                      <PaletteAction
+                        key={`${result.kind}-${index}`}
+                        result={result}
+                        index={index}
+                        isSelected={isSelected}
+                        onMouseEnter={() => setSelectedIndex(index)}
+                        onClick={() => executeResult(result)}
+                      />
+                    );
+                  }
+                  const tab = result.tab;
                   return (
                     <div
                       key={`tab-${tab.windowId}-${tab.id}`}
@@ -521,7 +540,7 @@ export function App({
                       role="option"
                       aria-selected={isSelected}
                       onMouseEnter={() => setSelectedIndex(index)}
-                      onClick={() => void switchTab(tab)}
+                      onClick={() => executeResult(result)}
                     >
                       <TabFavicon tab={tab} />
                       <div className="row-content">

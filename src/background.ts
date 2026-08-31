@@ -178,6 +178,19 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   void removeCachedPreview(tabId);
 });
 
+async function openSearchPalette() {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const previewPromise = tab?.id !== undefined && tab.windowId !== undefined
+    ? capturePreview(tab.id, tab.windowId)
+    : Promise.resolve();
+  await previewPromise;
+  await sendToActiveTab({
+    type: "open-palette",
+    mode: "search",
+    previewUrl: tab?.id !== undefined ? previewCache.get(tab.id)?.dataUrl : undefined,
+  });
+}
+
 async function openTabSwitcher() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   const capturePromise = tab?.id !== undefined && tab.windowId !== undefined
@@ -197,11 +210,11 @@ async function openTabSwitcher() {
 }
 
 chrome.commands.onCommand.addListener((command) => {
-  if (command === "open-palette") void sendToActiveTab({ type: "open-palette", mode: "search" });
+  if (command === "open-palette") void openSearchPalette();
   if (command === "open-tab-switcher") void openTabSwitcher();
 });
 
-chrome.action.onClicked.addListener(() => void sendToActiveTab({ type: "open-palette", mode: "search" }));
+chrome.action.onClicked.addListener(() => void openSearchPalette());
 
 chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResponse) => {
   if (message.type === "get-tabs") {
@@ -218,6 +231,12 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResp
 
   if (message.type === "open-url") {
     void chrome.tabs.create({ url: message.url })
+      .then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  if (message.type === "search-web") {
+    void chrome.search.query({ text: message.query, disposition: "NEW_TAB" })
       .then(() => sendResponse({ ok: true }));
     return true;
   }

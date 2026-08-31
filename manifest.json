@@ -9,7 +9,7 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["tabs", "windows", "scripting", "activeTab", "storage"],
+  "permissions": ["tabs", "windows", "scripting", "activeTab", "storage", "search"],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"

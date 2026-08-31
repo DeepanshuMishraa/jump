@@ -441,14 +441,19 @@ button {
 
 /* Elevated Search Bar Row (Clean, no search icon) */
 .search-bar-row {
-  height: 52px;
-  min-height: 52px;
+  height: 58px;
+  min-height: 58px;
   padding: 0 16px;
   display: flex;
   align-items: center;
   gap: 10px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.search-bar-icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
 }
 
 .search-input {
@@ -567,6 +572,25 @@ button {
 .list-row:active {
   transform: scale(0.985) translateY(0);
   transition-duration: 70ms;
+}
+
+.palette-action-row {
+  color: var(--text-secondary);
+}
+
+.palette-action-row .row-title {
+  font-weight: 550;
+}
+
+.palette-action-row > svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.gallery-grid .palette-action-row {
+  min-height: 42px;
+  height: auto;
+  align-self: center;
 }
 
 /* ==========================================================================

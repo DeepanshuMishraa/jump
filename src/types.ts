@@ -31,6 +31,7 @@ export type BrowserMessage =
   | { type: "get-tabs" }
   | { type: "activate-tab"; tab: PaletteTab }
   | { type: "open-url"; url: string }
+  | { type: "search-web"; query: string }
   | { type: "open-shortcut-settings" }
   | { type: "open-palette"; mode?: "search" | "switcher"; previewUrl?: string }
   | { type: "update-switcher-preview"; previewUrl: string }
