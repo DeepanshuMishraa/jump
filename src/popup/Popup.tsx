@@ -15,8 +15,8 @@ export function Popup() {
   const [shortcuts, setShortcuts] = useState<Record<string, string>>({});
   const settingsRevision = useRef(0);
   const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
-  const defaultSearchShortcut = isMac ? "⌘ ⇧ P" : "Ctrl Shift P";
-  const defaultSwitcherShortcut = "Ctrl Tab";
+  const defaultSearchShortcut = isMac ? "⌘⇧P" : "Ctrl Shift P";
+  const defaultSwitcherShortcut = isMac ? "⌥Q" : "Alt Q";
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
     ? chrome.runtime.getManifest().version
     : "0.1.1";
@@ -57,14 +57,14 @@ export function Popup() {
       <header className="popup-header">
         <div className="popup-brand">
           <span className="popup-mark" aria-hidden="true">
-            <CommandIcon size={15} />
+            <CommandIcon size={14} />
           </span>
-          <div>
+          <div className="popup-brand-text">
             <div className="popup-title-row">
               <h1 className="popup-title">Jump</h1>
-              <span className="popup-version">v{version}</span>
+              <span className="popup-version-pill">v{version}</span>
             </div>
-            <p className="popup-tagline">Move through tabs without breaking focus.</p>
+            <p className="popup-tagline">Fast tab search &amp; switcher</p>
           </div>
         </div>
       </header>
@@ -84,10 +84,15 @@ export function Popup() {
                 type="button"
                 className={`popup-segmented-item ${isActive ? "active" : ""}`}
                 aria-pressed={isActive}
-                onClick={() => void updateViewMode(mode)}
+                disabled={mode === "gallery"}
+                aria-disabled={mode === "gallery"}
+                onClick={() => {
+                  if (mode !== "gallery") void updateViewMode(mode);
+                }}
               >
-                <Icon size={14} />
+                <Icon size={13} />
                 <span>{label}</span>
+                {mode === "gallery" && <span className="popup-coming-soon">Coming soon</span>}
               </button>
             );
           })}
@@ -97,31 +102,34 @@ export function Popup() {
       <section className="popup-shortcuts" aria-label="Keyboard shortcuts">
         <div className="popup-shortcut-row">
           <span>Search tabs</span>
-          <span className="popup-key-group" aria-label={shortcuts["open-palette"] ?? defaultSearchShortcut}>
+          <span className="popup-key-group">
             <kbd>{shortcuts["open-palette"] ?? defaultSearchShortcut}</kbd>
           </span>
         </div>
         <div className="popup-shortcut-row">
           <span>Visual switcher</span>
-          <span className="popup-key-group" aria-label={shortcuts["open-tab-switcher"] ?? defaultSwitcherShortcut}>
+          <span className="popup-key-group">
             <kbd>{shortcuts["open-tab-switcher"] ?? defaultSwitcherShortcut}</kbd>
           </span>
         </div>
       </section>
 
-      <button
-        type="button"
-        className="popup-settings-link"
-        onClick={async () => {
-          // Keep the popup alive until the service worker has created the tab.
-          // Closing first races the runtime message and makes the click flaky.
-          await openShortcutSettings();
-          window.close();
-        }}
-      >
-        <span>Customize shortcuts</span>
-        <ArrowUpRightIcon size={12} />
-      </button>
+      <footer className="popup-footer-bar">
+        <button
+          type="button"
+          className="popup-settings-link"
+          onClick={async () => {
+            try {
+              await openShortcutSettings();
+            } finally {
+              window.close();
+            }
+          }}
+        >
+          <span>Customize shortcuts</span>
+          <ArrowUpRightIcon size={11} />
+        </button>
+      </footer>
     </main>
   );
 }

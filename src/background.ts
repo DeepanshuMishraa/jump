@@ -105,11 +105,17 @@ async function capturePreview(tabId: number, windowId: number) {
       format: "jpeg",
       quality: 35,
     });
-    if (!dataUrl) return;
+    const currentTab = await chrome.tabs.get(tabId);
+    const currentWindow = await chrome.windows.get(windowId);
+    if (!dataUrl || currentTab.url !== tab.url || !currentTab.active || !currentWindow.focused) {
+      previewCache.delete(tabId);
+      await persistPreviewCache();
+      return;
+    }
 
     previewCache.set(tabId, {
       tabId,
-      url: tab.url,
+      url: currentTab.url ?? tab.url,
       dataUrl,
       capturedAt: Date.now(),
     });
@@ -119,9 +125,8 @@ async function capturePreview(tabId: number, windowId: number) {
   }
 }
 
-async function sendToActiveTab(message: BrowserMessage) {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (tab?.id === undefined) return;
+async function sendToTab(tab: chrome.tabs.Tab, message: BrowserMessage) {
+  if (tab.id === undefined) return;
   try {
     await chrome.tabs.sendMessage(tab.id, message);
   } catch {
@@ -137,6 +142,11 @@ async function sendToActiveTab(message: BrowserMessage) {
       }
     }
   }
+}
+
+async function sendToActiveTab(message: BrowserMessage) {
+  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (tab) await sendToTab(tab, message);
 }
 
 async function getTabs(): Promise<PaletteTab[]> {
@@ -178,17 +188,29 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   void removeCachedPreview(tabId);
 });
 
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.url !== undefined) void removeCachedPreview(tabId);
+});
+
 async function openSearchPalette() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const previewPromise = tab?.id !== undefined && tab.windowId !== undefined
-    ? capturePreview(tab.id, tab.windowId)
-    : Promise.resolve();
-  await previewPromise;
-  await sendToActiveTab({
-    type: "open-palette",
-    mode: "search",
-    previewUrl: tab?.id !== undefined ? previewCache.get(tab.id)?.dataUrl : undefined,
-  });
+  if (!tab) return;
+
+  // Open immediately. Preview capture can take long enough to make the palette feel broken.
+  await sendToTab(tab, { type: "open-palette", mode: "search" });
+  if (tab.id === undefined || tab.windowId === undefined) return;
+
+  await capturePreview(tab.id, tab.windowId);
+  await sendPreviewUpdate(tab);
+}
+
+async function sendPreviewUpdate(tab: chrome.tabs.Tab) {
+  if (tab.id === undefined) return;
+  const [currentTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const preview = previewCache.get(tab.id);
+  if (currentTab?.id === tab.id && currentTab.url === preview?.url && preview !== undefined) {
+    await sendToTab(tab, { type: "update-switcher-preview", previewUrl: preview.dataUrl });
+  }
 }
 
 async function openTabSwitcher() {
@@ -200,13 +222,7 @@ async function openTabSwitcher() {
   // Start capture during the command gesture, but do not make the UI wait for it.
   await sendToActiveTab({ type: "open-palette", mode: "switcher" });
   await capturePromise;
-
-  if (tab?.id !== undefined) {
-    const previewUrl = previewCache.get(tab.id)?.dataUrl;
-    if (previewUrl !== undefined) {
-      await sendToActiveTab({ type: "update-switcher-preview", previewUrl });
-    }
-  }
+  if (tab) await sendPreviewUpdate(tab);
 }
 
 chrome.commands.onCommand.addListener((command) => {

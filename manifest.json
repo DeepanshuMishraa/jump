@@ -34,8 +34,8 @@
     },
     "open-tab-switcher": {
       "suggested_key": {
-        "default": "Ctrl+Tab",
-        "mac": "Ctrl+Tab"
+        "default": "Alt+Q",
+        "mac": "Alt+Q"
       },
       "description": "Open the visual tab switcher"
     }

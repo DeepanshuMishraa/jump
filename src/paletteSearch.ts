@@ -2,18 +2,7 @@ import type { PaletteTab } from "./types";
 
 export type SearchResult =
   | { kind: "tab"; tab: PaletteTab }
-  | { kind: "url"; url: string }
   | { kind: "search"; query: string };
-
-export function browserUrlFor(input: string) {
-  const value = input.trim();
-  if (!value) return undefined;
-  if (/^(https?:\/\/|ftp:\/\/|file:\/\/)/i.test(value)) return value;
-  if (/^(localhost|127\.0\.0\.1)(:\d+)?([/?#].*)?$/i.test(value) || /^[^\s/]+\.[^\s/]+(?:[/?#].*)?$/.test(value)) {
-    return `https://${value}`;
-  }
-  return undefined;
-}
 
 export function scoreTab(tab: PaletteTab, query: string) {
   if (!query) return tab.windowFocused ? 100 : tab.active ? 90 : tab.lastAccessed ? 50 : 10;
@@ -46,9 +35,5 @@ export function buildSearchResults(tabs: PaletteTab[], query: string): SearchRes
   const tabResults = searchTabs(tabs, trimmed).map((tab) => ({ kind: "tab" as const, tab }));
   if (!trimmed) return tabResults;
 
-  const url = browserUrlFor(trimmed);
-  const actions: SearchResult[] = url
-    ? [{ kind: "url", url }, { kind: "search", query: trimmed }]
-    : [{ kind: "search", query: trimmed }];
-  return [...tabResults, ...actions];
+  return [...tabResults, { kind: "search", query: trimmed }];
 }

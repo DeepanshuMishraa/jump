@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { activateTab, getTabs, openUrl, searchWeb } from "./browser";
+import { activateTab, getTabs, searchWeb } from "./browser";
 import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
@@ -245,9 +245,6 @@ export function App({
     if (!result) return;
     if (result.kind === "tab") {
       void switchTab(result.tab);
-    } else if (result.kind === "url") {
-      void openUrl(result.url);
-      handleClose();
     } else {
       void searchWeb(result.query);
       handleClose();
@@ -310,7 +307,7 @@ export function App({
     }
   }, [selectedIndex, isSwitcher]);
 
-  // Search open tabs, then offer browser-style URL and web-search actions.
+  // Search open tabs, then offer one web-search action.
   const results = useMemo(() => buildSearchResults(tabs, query), [query, tabs]);
 
   // Adjust selected index bounds for search list
@@ -445,8 +442,8 @@ export function App({
               }
             }}
             onKeyDown={handleSearchKeyDown}
-            placeholder="Search or Enter URL..."
-            aria-label="Search tabs, URLs, or the web"
+            placeholder="Search open tabs or web..."
+            aria-label="Search open tabs or the web"
             autoComplete="off"
             spellCheck="false"
           />
@@ -554,12 +551,14 @@ export function App({
                         </div>
                       </div>
 
-                      <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
-                        <span className="action-text">Switch to Tab</span>
-                        <span className="action-arrow-badge">
-                          <ArrowRightIcon size={12} />
-                        </span>
-                      </div>
+                      {!tab.active || !tab.windowFocused ? (
+                        <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
+                          <span className="action-text">Switch to Tab</span>
+                          <span className="action-arrow-badge">
+                            <ArrowRightIcon size={12} />
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })
