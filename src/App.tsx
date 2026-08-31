@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { activateTab, getTabs, searchWeb } from "./browser";
+import { activateTab, getTabs, openUrl, searchWeb } from "./browser";
 import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
@@ -245,6 +245,9 @@ export function App({
     if (!result) return;
     if (result.kind === "tab") {
       void switchTab(result.tab);
+    } else if (result.kind === "bang") {
+      void openUrl(result.url);
+      handleClose();
     } else {
       void searchWeb(result.query);
       handleClose();

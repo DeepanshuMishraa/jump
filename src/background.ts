@@ -8,9 +8,9 @@ type PreviewEntry = {
 };
 
 const PREVIEW_CACHE_KEY = "recent-tab-previews";
-const PREVIEW_TTL_MS = 6 * 60 * 60 * 1000;
-const MAX_PREVIEW_COUNT = 12;
-const MAX_PREVIEW_CHARACTERS = 7_000_000;
+const PREVIEW_TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_PREVIEW_COUNT = 24;
+const MAX_PREVIEW_CHARACTERS = 9_000_000;
 
 const previewCache = new Map<number, PreviewEntry>();
 
@@ -195,34 +195,40 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 async function openSearchPalette() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab) return;
+  if (tab.id !== undefined && tab.windowId !== undefined) {
+    await capturePreview(tab.id, tab.windowId);
+  }
 
-  // Open immediately. Preview capture can take long enough to make the palette feel broken.
-  await sendToTab(tab, { type: "open-palette", mode: "search" });
-  if (tab.id === undefined || tab.windowId === undefined) return;
-
-  await capturePreview(tab.id, tab.windowId);
-  await sendPreviewUpdate(tab);
-}
-
-async function sendPreviewUpdate(tab: chrome.tabs.Tab) {
-  if (tab.id === undefined) return;
   const [currentTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const preview = previewCache.get(tab.id);
-  if (currentTab?.id === tab.id && currentTab.url === preview?.url && preview !== undefined) {
-    await sendToTab(tab, { type: "update-switcher-preview", previewUrl: preview.dataUrl });
+  const preview = tab.id !== undefined ? previewCache.get(tab.id) : undefined;
+  const previewUrl = currentTab?.id === tab.id && currentTab.url === preview?.url
+    ? preview?.dataUrl
+    : undefined;
+
+  if (currentTab) {
+    await sendToTab(currentTab, { type: "open-palette", mode: "search", previewUrl });
   }
 }
 
 async function openTabSwitcher() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const capturePromise = tab?.id !== undefined && tab.windowId !== undefined
-    ? capturePreview(tab.id, tab.windowId)
-    : Promise.resolve();
+  if (!tab) return;
 
-  // Start capture during the command gesture, but do not make the UI wait for it.
-  await sendToActiveTab({ type: "open-palette", mode: "switcher" });
-  await capturePromise;
-  if (tab) await sendPreviewUpdate(tab);
+  // Capture before mounting the switcher. Capturing after it opens includes the
+  // switcher itself in the thumbnail, which is especially confusing on repeat use.
+  if (tab.id !== undefined && tab.windowId !== undefined) {
+    await capturePreview(tab.id, tab.windowId);
+  }
+
+  const [currentTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const preview = tab.id !== undefined ? previewCache.get(tab.id) : undefined;
+  const previewUrl = currentTab?.id === tab.id && currentTab.url === preview?.url
+    ? preview?.dataUrl
+    : undefined;
+
+  if (currentTab) {
+    await sendToTab(currentTab, { type: "open-palette", mode: "switcher", previewUrl });
+  }
 }
 
 chrome.commands.onCommand.addListener((command) => {
