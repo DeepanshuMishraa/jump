@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, type BrowserHistoryItem } from "./browser";
-import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, SearchIcon, SpeakerIcon, XIcon } from "./icons";
+import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, MuteIcon, SearchIcon, SpeakerIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
@@ -71,7 +71,7 @@ function SwitcherCard({
       <div className="switcher-card-footer">
         <TabFavicon tab={tab} size={18} />
         <span className="switcher-card-title">{tab.title}</span>
-        {tab.audible && <SpeakerIcon size={14} className="tab-audible-icon" />}
+        {tab.muted ? <MuteIcon size={14} className="tab-audible-icon" /> : tab.audible ? <SpeakerIcon size={14} className="tab-audible-icon" /> : null}
       </div>
     </div>
   );
@@ -118,7 +118,7 @@ function GalleryCard({
         <div className="gallery-meta-left">
           <TabFavicon tab={tab} size={15} />
           <span className="gallery-title">{tab.title}</span>
-          {tab.audible && <SpeakerIcon size={14} className="tab-audible-icon" />}
+          {tab.muted ? <MuteIcon size={14} className="tab-audible-icon" /> : tab.audible ? <SpeakerIcon size={14} className="tab-audible-icon" /> : null}
         </div>
         {tab.hostname && <span className="gallery-domain">{tab.hostname}</span>}
       </div>
@@ -593,7 +593,7 @@ export function App({
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {tab.audible && <SpeakerIcon size={16} className="tab-audible-icon" />}
+                        {tab.muted ? <MuteIcon size={16} className="tab-audible-icon" /> : tab.audible ? <SpeakerIcon size={16} className="tab-audible-icon" /> : null}
                         {!tab.active || !tab.windowFocused ? (
                           <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
                             <span className="action-text">Switch to Tab</span>
