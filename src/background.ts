@@ -174,7 +174,7 @@ async function getTabs(): Promise<PaletteTab[]> {
         active: Boolean(tab.active),
         windowFocused: focusedWindows.has(tab.windowId),
         pinned: Boolean(tab.pinned),
-        audible: Boolean(tab.audible),
+        audible: Boolean(tab.audible && !tab.mutedInfo?.muted),
         lastAccessed: tab.lastAccessed,
       };
     })
