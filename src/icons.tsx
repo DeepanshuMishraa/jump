@@ -70,6 +70,16 @@ export function GridIcon({ size = 16, className }: IconProps) {
   );
 }
 
+export function PinIcon({ size = 14, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M12 17v5" />
+      <path d="m5 3 14 0" />
+      <path d="m7 3 1 7-3 3h14l-3-3 1-7" />
+    </svg>
+  );
+}
+
 export function PaletteIcon({ size = 16, className }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">

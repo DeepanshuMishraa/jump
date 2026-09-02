@@ -7,10 +7,24 @@ export type ColorTheme =
   | "gruvbox";
 
 export type ViewMode = "list" | "gallery";
+export type TabSwitchMode = "recent" | "order";
+
+export type PinnedTab = {
+  tabId: number;
+  identity: string;
+  url: string;
+  title: string;
+  hostname: string;
+  faviconUrl?: string;
+};
 
 export type UserSettings = {
   viewMode: ViewMode;
   theme: ColorTheme;
+  disableMouseTabSwitcher: boolean;
+  disableMouseCommandPalette: boolean;
+  tabSwitchMode: TabSwitchMode;
+  pinnedTabs: PinnedTab[];
 };
 
 export type PaletteTab = {
@@ -19,6 +33,7 @@ export type PaletteTab = {
   title: string;
   url: string;
   hostname: string;
+  index: number;
   faviconUrl?: string;
   previewUrl?: string;
   active: boolean;
@@ -33,12 +48,14 @@ export type BrowserMessage =
   | { type: "get-tabs" }
   | { type: "search-history"; query: string; maxResults?: number }
   | { type: "activate-tab"; tab: PaletteTab }
-  | { type: "open-url"; url: string }
+  | { type: "open-url"; url: string; openerTabId?: number }
   | { type: "search-web"; query: string }
   | { type: "open-shortcut-settings" }
-  | { type: "open-palette"; mode?: "search" | "switcher"; previewUrl?: string }
+  | { type: "open-palette"; mode?: "search" | "switcher"; previewUrl?: string; activeTabId?: number }
   | { type: "update-switcher-preview"; previewUrl: string }
   | { type: "cycle-tab-switcher"; direction?: "next" | "prev" }
+  | { type: "request-pin-selected-tab" }
+  | { type: "set-tab-pinned"; tab: PinnedTab; pinned: boolean }
   | { type: "get-settings" }
   | { type: "save-settings"; settings: Partial<UserSettings> };
 

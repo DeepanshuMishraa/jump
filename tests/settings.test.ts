@@ -58,12 +58,37 @@ test("a pending popup read does not replace a newer user selection", () => {
 test("persisted settings validate fields independently", () => {
   assert.deepEqual(
     parseStoredSettings({ viewMode: "unsupported", theme: "nord", extra: "ignored" }),
-    { viewMode: "list", theme: "nord" },
+    { ...DEFAULT_SETTINGS, theme: "nord" },
   );
   assert.deepEqual(
     parseStoredSettings({ viewMode: { value: "gallery" }, theme: "unknown" }),
     DEFAULT_SETTINGS,
   );
+  assert.deepEqual(
+    parseStoredSettings({ disableMouseTabSwitcher: true, disableMouseCommandPalette: "yes", pinnedTabs: [{ tabId: 12, url: "https://example.com" }, { tabId: 0, url: "bad" }] }),
+    {
+      ...DEFAULT_SETTINGS,
+      disableMouseTabSwitcher: true,
+      pinnedTabs: [{
+        tabId: 12,
+        identity: "https://example.com/",
+        url: "https://example.com",
+        title: "https://example.com",
+        hostname: "example.com",
+      }],
+    },
+  );
+});
+
+test("migrates legacy pinned tab IDs", () => {
+  assert.deepEqual(parseStoredSettings({ pinnedTabIds: [12, "bad", 0] }), {
+    ...DEFAULT_SETTINGS,
+    pinnedTabs: [{ tabId: 12, identity: "", url: "", title: "Pinned tab", hostname: "" }],
+  });
+});
+
+test("ignores invalid legacy pinned tab IDs", () => {
+  assert.deepEqual(parseStoredSettings({ pinnedTabIds: "bad" }), DEFAULT_SETTINGS);
 });
 
 test("overlapping saves preserve both partial updates", async () => {
@@ -89,7 +114,7 @@ test("overlapping saves preserve both partial updates", async () => {
     settings.saveStoredSettings({ theme: "nord" }),
   ]);
 
-  assert.deepEqual(stored, { viewMode: "gallery", theme: "nord" });
+  assert.deepEqual(stored, { ...DEFAULT_SETTINGS, viewMode: "gallery", theme: "nord" });
   assert.equal(maximumActiveWrites, 1);
 });
 

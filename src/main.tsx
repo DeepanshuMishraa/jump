@@ -7,11 +7,13 @@ import "./styles.css";
 function NewTabPage() {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<"search" | "switcher">("search");
+  const [activeTabId, setActiveTabId] = useState<number | undefined>();
 
   useEffect(() => {
     const handleMessage = (message: BrowserMessage) => {
       if (message.type === "open-palette") {
         setMode(message.mode || "search");
+        setActiveTabId(message.activeTabId);
         setIsOpen(true);
       }
     };
@@ -48,6 +50,7 @@ function NewTabPage() {
     <App
       key={mode}
       initialMode={mode}
+      initialActiveTabId={activeTabId}
       onClose={() => setIsOpen(false)}
     />
   );

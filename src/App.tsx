@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, type BrowserHistoryItem } from "./browser";
-import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, MuteIcon, SearchIcon, SpeakerIcon, XIcon } from "./icons";
+import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, setTabPinned, type BrowserHistoryItem } from "./browser";
+import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, MuteIcon, PinIcon, SearchIcon, SpeakerIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
-import { DEFAULT_SETTINGS, getStoredSettings, subscribeToSettings } from "./settings";
+import { DEFAULT_SETTINGS, getStoredSettings, pinnedTabIdentity, subscribeToSettings } from "./settings";
 import type { BrowserMessage, PaletteTab, UserSettings } from "./types";
 
 function TabFavicon({ tab, size = 16 }: { tab: PaletteTab; size?: number }) {
@@ -33,6 +33,7 @@ function TabSoundIndicator({ tab, size = 14 }: { tab: PaletteTab; size?: number 
   if (tab.audible) return <SpeakerIcon size={size} className="tab-audible-icon" />;
   return null;
 }
+
 function SwitcherCard({
   tab,
   isSelected,
@@ -45,8 +46,8 @@ function SwitcherCard({
   isSelected: boolean;
   previewUrl?: string;
   index: number;
-  onClick: () => void;
-  onMouseEnter: () => void;
+  onClick?: () => void;
+  onMouseEnter?: () => void;
 }) {
   const effectivePreview = tab.previewUrl || (tab.active && tab.windowFocused ? previewUrl : undefined);
 
@@ -76,6 +77,7 @@ function SwitcherCard({
       <div className="switcher-card-footer">
         <TabFavicon tab={tab} size={18} />
         <span className="switcher-card-title">{tab.title}</span>
+        {tab.pinned && <PinIcon className="tab-pinned-icon" size={13} />}
         <TabSoundIndicator tab={tab} />
       </div>
     </div>
@@ -94,8 +96,8 @@ function GalleryCard({
   index: number;
   isSelected: boolean;
   previewUrl?: string;
-  onClick: () => void;
-  onMouseEnter: () => void;
+  onClick?: () => void;
+  onMouseEnter?: () => void;
 }) {
   const effectivePreview = tab.previewUrl || (tab.active && tab.windowFocused ? previewUrl : undefined);
 
@@ -123,6 +125,7 @@ function GalleryCard({
         <div className="gallery-meta-left">
           <TabFavicon tab={tab} size={15} />
           <span className="gallery-title">{tab.title}</span>
+          {tab.pinned && <PinIcon className="tab-pinned-icon" size={12} />}
           <TabSoundIndicator tab={tab} />
         </div>
         {tab.hostname && <span className="gallery-domain">{tab.hostname}</span>}
@@ -135,10 +138,12 @@ export function App({
   onClose,
   initialMode = "search",
   previewUrl,
+  initialActiveTabId,
 }: {
   onClose: () => void;
   initialMode?: "search" | "switcher";
   previewUrl?: string;
+  initialActiveTabId?: number;
 }) {
   const [tabs, setTabs] = useState<PaletteTab[]>([]);
   const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
@@ -153,16 +158,19 @@ export function App({
   const isGallery = settings.viewMode === "gallery";
   const [isExpanded, setIsExpanded] = useState(isSwitcher);
   const [selectedIndex, setSelectedIndex] = useState(isSwitcher ? 1 : 0);
+  const initialSwitcherSelectionPending = useRef(isSwitcher && initialActiveTabId !== undefined);
   const [isClosing, setIsClosing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const resultsRef = useRef<SearchResult[]>([]);
+  const tabsRequestIdRef = useRef(0);
 
   // Load and subscribe to persistent settings
   useEffect(() => {
     void getStoredSettings().then(setSettings);
-    void getSearchHistory().then(setHistory);
-    void getBrowserHistory("", 5).then(setRecentBrowserHistory).catch(() => {});
+    void getSearchHistory().then(setHistory).catch(() => setHistory([]));
+    void getBrowserHistory("", 8).then(setRecentBrowserHistory).catch(() => setRecentBrowserHistory([]));
     return subscribeToSettings(setSettings);
   }, []);
 
@@ -175,14 +183,19 @@ export function App({
     if (!trimmed) return;
 
     let cancelled = false;
-    void getBrowserHistory(trimmed).then((items) => {
-      if (!cancelled) {
-        const seen = new Set(localMatches.map((item) => item.id));
-        setBrowserHistory([...localMatches, ...items.filter((item) => !seen.has(item.id))]);
-      }
-    }).catch(() => {});
+    const timeout = window.setTimeout(() => {
+      void getBrowserHistory(trimmed, 8).then((items) => {
+        if (!cancelled) {
+          const seen = new Set(localMatches.map((item) => item.id));
+          setBrowserHistory([...localMatches, ...items.filter((item) => !seen.has(item.id))]);
+        }
+      }).catch(() => {
+        // Keep locally available history visible when Chrome history is unavailable.
+      });
+    }, 100);
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
     };
   }, [query, recentBrowserHistory]);
 
@@ -194,23 +207,37 @@ export function App({
   }, [onClose]);
 
   const refreshTabs = useCallback(async () => {
+    const requestId = tabsRequestIdRef.current + 1;
+    tabsRequestIdRef.current = requestId;
     try {
       const tabList = await getTabs();
+      if (requestId !== tabsRequestIdRef.current) return;
       setTabs(tabList);
-      if (isSwitcher && tabList.length > 1) {
-        setSelectedIndex(1);
+      if (isSwitcher && initialSwitcherSelectionPending.current && tabList.length > 0) {
+        const activeIndex = initialActiveTabId === undefined
+          ? -1
+          : tabList.findIndex((tab) => tab.id === initialActiveTabId);
+        setSelectedIndex((activeIndex + 1 + tabList.length) % tabList.length);
+        initialSwitcherSelectionPending.current = false;
       }
     } catch {
-      setTabs([]);
+      if (requestId === tabsRequestIdRef.current) setTabs([]);
     }
-  }, [isSwitcher]);
+  }, [isSwitcher, initialActiveTabId]);
 
   useEffect(() => {
     if (!isSwitcher) {
       inputRef.current?.focus();
     }
     void refreshTabs();
-    const refresh = () => void refreshTabs();
+    let refreshTimer: number | undefined;
+    const scheduleRefresh = () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = undefined;
+        void refreshTabs();
+      }, 50);
+    };
     const events =
       chrome.tabs && chrome.windows
         ? [
@@ -221,9 +248,12 @@ export function App({
             chrome.windows.onFocusChanged,
           ]
         : [];
-    events.forEach((event) => event.addListener(refresh));
-    return () => events.forEach((event) => event.removeListener(refresh));
-  }, [refreshTabs, isSwitcher]);
+    events.forEach((event) => event.addListener(scheduleRefresh));
+    return () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      events.forEach((event) => event.removeListener(scheduleRefresh));
+    };
+  }, [refreshTabs, isSwitcher, initialActiveTabId]);
 
   // Unified message listener for both in-page overlay and new tab page
   useEffect(() => {
@@ -237,9 +267,13 @@ export function App({
             setCurrentPreviewUrl(message.previewUrl);
           }
           setIsExpanded(true);
-          setSelectedIndex((curr) => {
+          setSelectedIndex((currentIndex) => {
             if (tabs.length === 0) return 0;
-            return (curr + 1) % tabs.length;
+            if (isSwitcher) return (currentIndex + 1) % tabs.length;
+            const activeIndex = message.activeTabId === undefined
+              ? -1
+              : tabs.findIndex((tab) => tab.id === message.activeTabId);
+            return (activeIndex + 1 + tabs.length) % tabs.length;
           });
         } else {
           setMode("search");
@@ -255,6 +289,15 @@ export function App({
             ? (curr - 1 + tabs.length) % tabs.length
             : (curr + 1) % tabs.length;
         });
+      } else if (message.type === "request-pin-selected-tab") {
+        const selectedResult = isSwitcher
+          ? (tabs[selectedIndex] ? { kind: "tab" as const, tab: tabs[selectedIndex] } : undefined)
+          : resultsRef.current[selectedIndex];
+        if (selectedResult?.kind === "tab") {
+          void setTabPinned(selectedResult.tab, !selectedResult.tab.pinned).then(() => void refreshTabs());
+        } else if (selectedResult?.kind === "pinned") {
+          void setTabPinned(selectedResult.tab, false);
+        }
       }
     };
 
@@ -262,7 +305,7 @@ export function App({
       chrome.runtime.onMessage.addListener(handleMessage);
       return () => chrome.runtime.onMessage.removeListener(handleMessage);
     }
-  }, [tabs.length]);
+  }, [tabs, selectedIndex, refreshTabs, isSwitcher]);
 
   // Switch to selected tab
   const switchTab = useCallback(
@@ -281,21 +324,22 @@ export function App({
       return;
     }
 
-    if (result.kind === "visited") {
-      void openUrl(result.item.url);
+    const openerTabId = tabs.find((tab) => tab.active && tab.windowFocused)?.id;
+    if (result.kind === "visited" || result.kind === "pinned") {
+      void openUrl(result.kind === "visited" ? result.item.url : result.tab.url, openerTabId);
       handleClose();
       return;
     }
 
     const input = result.kind === "history" ? result.query : query;
     const action = result.kind === "history" ? buildSearchResults([], result.query)[0] : result;
-    if (!action || action.kind === "tab" || action.kind === "history" || action.kind === "visited") return;
+    if (!action || action.kind === "tab" || action.kind === "pinned" || action.kind === "history" || action.kind === "visited") return;
 
     void recordSearch(input).then(() => getSearchHistory().then(setHistory));
-    if (action.kind === "url" || action.kind === "bang") void openUrl(action.url);
+    if (action.kind === "url" || action.kind === "bang") void openUrl(action.url, openerTabId);
     else void searchWeb(action.query);
     handleClose();
-  }, [handleClose, switchTab, query]);
+  }, [handleClose, switchTab, query, tabs]);
 
   // Global keyup/keydown handler for releasing Alt key and cycling in switcher mode
   useEffect(() => {
@@ -353,8 +397,18 @@ export function App({
     }
   }, [selectedIndex, isSwitcher]);
 
-  // Search open tabs, then offer one web-search action.
-  const results = useMemo(() => buildSearchResults(tabs, query, history, browserHistory), [query, tabs, history, browserHistory]);
+  // Keep saved pins visible even when their browser tab is closed.
+  const closedPinnedTabs = useMemo(() => {
+    const openIdentities = new Set(tabs.map((tab) => pinnedTabIdentity(tab.url)));
+    return settings.pinnedTabs.filter((tab) => !openIdentities.has(tab.identity));
+  }, [settings.pinnedTabs, tabs]);
+  const results = useMemo(
+    () => buildSearchResults(tabs, query, history, browserHistory, closedPinnedTabs),
+    [query, tabs, history, browserHistory, closedPinnedTabs],
+  );
+  useEffect(() => {
+    resultsRef.current = results;
+  }, [results]);
 
   // Adjust selected index bounds for search list
   useEffect(() => {
@@ -393,14 +447,14 @@ export function App({
       event.preventDefault();
       const direction = event.key === "ArrowRight" ? 1 : -1;
       setSelectedIndex((index) => Math.max(0, Math.min(index + direction, results.length - 1)));
-    } else if (event.key === "ArrowDown" || (event.key.toLowerCase() === "j" && (event.metaKey || event.ctrlKey))) {
+    } else if (event.key === "ArrowDown") {
       event.preventDefault();
       setIsExpanded(true);
       const step = isGallery ? 2 : 1;
       setSelectedIndex((index) => isGallery
         ? Math.min(index + step, Math.max(0, results.length - 1))
         : results.length ? (index + step) % results.length : 0);
-    } else if (event.key === "ArrowUp" || (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey))) {
+    } else if (event.key === "ArrowUp") {
       event.preventDefault();
       const step = isGallery ? 2 : 1;
       if (selectedIndex < step && !query) {
@@ -440,8 +494,8 @@ export function App({
                   index={index}
                   isSelected={index === selectedIndex}
                   previewUrl={currentPreviewUrl}
-                  onClick={() => void switchTab(tab)}
-                  onMouseEnter={() => setSelectedIndex(index)}
+                  onClick={settings.disableMouseTabSwitcher ? undefined : () => void switchTab(tab)}
+                  onMouseEnter={settings.disableMouseTabSwitcher ? undefined : () => setSelectedIndex(index)}
                 />
               ))
             )}
@@ -545,8 +599,8 @@ export function App({
                     index={index}
                     isSelected={index === selectedIndex}
                     previewUrl={currentPreviewUrl}
-                    onClick={() => executeResult(result)}
-                    onMouseEnter={() => setSelectedIndex(index)}
+                    onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
+                    onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
                   />
                 ) : (
                   <PaletteAction
@@ -554,8 +608,8 @@ export function App({
                     result={result}
                     index={index}
                     isSelected={index === selectedIndex}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    onClick={() => executeResult(result)}
+                    onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
+                    onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                   />
                 ))
               ) : (
@@ -568,8 +622,8 @@ export function App({
                         result={result}
                         index={index}
                         isSelected={isSelected}
-                        onMouseEnter={() => setSelectedIndex(index)}
-                        onClick={() => executeResult(result)}
+                        onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
+                        onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                       />
                     );
                   }
@@ -582,8 +636,8 @@ export function App({
                       className={`list-row ${isSelected ? "selected" : ""}`}
                       role="option"
                       aria-selected={isSelected}
-                      onMouseEnter={() => setSelectedIndex(index)}
-                      onClick={() => executeResult(result)}
+                      onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
+                      onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                     >
                       <div className="list-row-left">
                         <span className="tab-favicon-wrapper">
@@ -591,13 +645,14 @@ export function App({
                         </span>
                         <div className="row-content">
                           <span className="row-title">{tab.title}</span>
+                          {tab.pinned && <PinIcon className="tab-pinned-icon" size={12} />}
                           {tab.hostname && tab.hostname !== tab.title && (
                             <span className="row-domain">— {tab.hostname}</span>
                           )}
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
                         <TabSoundIndicator tab={tab} size={16} />
                         {!tab.active || !tab.windowFocused ? (
                           <div className={`list-row-action ${isSelected ? "selected" : ""}`}>

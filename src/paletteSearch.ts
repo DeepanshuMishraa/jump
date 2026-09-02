@@ -1,9 +1,10 @@
-import type { PaletteTab } from "./types";
+import type { PaletteTab, PinnedTab } from "./types";
 import type { BrowserHistoryItem } from "./browser";
 import type { SearchHistoryEntry } from "./searchHistory";
 
 export type SearchResult =
   | { kind: "tab"; tab: PaletteTab }
+  | { kind: "pinned"; tab: PinnedTab }
   | { kind: "search"; query: string }
   | { kind: "url"; url: string }
   | { kind: "bang"; bang: string; label: string; query: string; url: string }
@@ -73,11 +74,11 @@ export function searchTabs(tabs: PaletteTab[], query: string) {
   return tabs
     .map((tab, index) => ({ tab, score: scoreTab(tab, trimmed), index }))
     .filter((entry) => entry.score >= 0)
-    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .sort((a, b) => (a.tab.pinned === b.tab.pinned ? b.score - a.score || a.index - b.index : a.tab.pinned ? -1 : 1))
     .map(({ tab }) => tab);
 }
 
-function searchActionFor(query: string): Exclude<SearchResult, { kind: "tab" | "history" }> {
+function searchActionFor(query: string): Exclude<SearchResult, { kind: "tab" | "pinned" | "history" }> {
   const bang = parseBang(query);
   if (bang) return { kind: "bang", bang: bang.bang, label: bang.label, query: bang.query, url: bang.url };
   const url = browserUrlFor(query);
@@ -90,16 +91,27 @@ export function buildSearchResults(
   query: string,
   history: SearchHistoryEntry[] = [],
   browserHistory: BrowserHistoryItem[] = [],
+  closedPinnedTabs: PinnedTab[] = [],
 ): SearchResult[] {
   const trimmed = query.trim();
+  const normalized = trimmed.toLowerCase();
+  const pinnedResults = closedPinnedTabs
+    .filter((tab) => !normalized || `${tab.title} ${tab.hostname} ${tab.url}`.toLowerCase().includes(normalized))
+    .map((tab) => ({ kind: "pinned" as const, tab }));
   const tabResults = searchTabs(tabs, trimmed).map((tab) => ({ kind: "tab" as const, tab }));
-  if (!trimmed) return tabResults;
+  if (!trimmed) return [...pinnedResults, ...tabResults];
 
   const action = searchActionFor(trimmed);
-  if (tabResults.length > 0) return [...tabResults, action];
+  const openUrls = new Set([
+    ...tabs.map((tab) => tab.url),
+    ...closedPinnedTabs.map((tab) => tab.url),
+  ]);
   const matchingHistory = history
     .filter((entry) => entry.query.toLowerCase().includes(trimmed.toLowerCase()))
     .map((entry) => ({ kind: "history" as const, query: entry.query, usedAt: entry.usedAt }));
-  const visitedResults = browserHistory.slice(0, 5).map((item) => ({ kind: "visited" as const, item }));
-  return [action, ...[...visitedResults, ...matchingHistory].slice(0, 5)];
+  const visitedResults = browserHistory
+    .filter((item) => !openUrls.has(item.url))
+    .slice(0, 5)
+    .map((item) => ({ kind: "visited" as const, item }));
+  return [...pinnedResults, ...tabResults, action, ...[...visitedResults, ...matchingHistory].slice(0, 5)];
 }

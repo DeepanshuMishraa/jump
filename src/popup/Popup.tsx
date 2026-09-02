@@ -1,14 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { openShortcutSettings } from "../browser";
-import { ArrowUpRightIcon, CommandIcon, GridIcon, ListIcon } from "../icons";
+import { ArrowUpRightIcon, CommandIcon } from "../icons";
 import { DEFAULT_SETTINGS, getStoredSettings, saveStoredSettings } from "../settings";
-import type { UserSettings, ViewMode } from "../types";
+import type { TabSwitchMode, UserSettings } from "../types";
 import { resolveSettingsRead } from "./settingsState";
-
-const VIEW_OPTIONS = [
-  { mode: "list", label: "List", Icon: ListIcon },
-  { mode: "gallery", label: "Gallery", Icon: GridIcon },
-] as const;
 
 export function Popup() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
@@ -17,6 +12,7 @@ export function Popup() {
   const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
   const defaultSearchShortcut = isMac ? "⌘⇧P" : "Ctrl Shift P";
   const defaultSwitcherShortcut = isMac ? "⌥Q" : "Alt Q";
+  const defaultPinShortcut = isMac ? "⌘K" : "Alt K";
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
     ? chrome.runtime.getManifest().version
     : "0.1.3";
@@ -30,6 +26,8 @@ export function Popup() {
         readRevision,
         settingsRevision.current,
       ));
+    }).catch(() => {
+      // Keep defaults when settings are temporarily unavailable.
     });
   }, []);
 
@@ -44,12 +42,23 @@ export function Popup() {
     });
   }, []);
 
-  const updateViewMode = async (mode: ViewMode) => {
+  const updateSetting = async <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
     const saveRevision = settingsRevision.current + 1;
     settingsRevision.current = saveRevision;
-    setSettings((current) => ({ ...current, viewMode: mode }));
-    const next = await saveStoredSettings({ viewMode: mode });
-    if (settingsRevision.current === saveRevision) setSettings(next);
+    const previousSettings = settings;
+    setSettings((current) => ({ ...current, [key]: value }));
+    try {
+      const next = await saveStoredSettings({ [key]: value });
+      if (settingsRevision.current === saveRevision) setSettings(next);
+    } catch {
+      if (settingsRevision.current === saveRevision) {
+        try {
+          setSettings(await getStoredSettings());
+        } catch {
+          setSettings(previousSettings);
+        }
+      }
+    }
   };
 
   return (
@@ -69,34 +78,47 @@ export function Popup() {
         </div>
       </header>
 
-      <section className="popup-section" aria-labelledby="default-view-label">
+      <section className="popup-section" aria-labelledby="tab-switching-label">
         <div className="popup-section-heading">
-          <span id="default-view-label">Default view</span>
-          <span className="popup-section-context">Command palette</span>
+          <span id="tab-switching-label">Tab switching</span>
+          <span className="popup-section-context">Cycle order</span>
         </div>
+        <div className="popup-segmented" role="group" aria-label="Tab switching order">
+          {(["recent", "order"] as const satisfies readonly TabSwitchMode[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={`popup-segmented-item ${settings.tabSwitchMode === mode ? "active" : ""}`}
+              aria-pressed={settings.tabSwitchMode === mode}
+              onClick={() => void updateSetting("tabSwitchMode", mode)}
+            >
+              <span>{mode === "recent" ? "Recent" : "Tab order"}</span>
+            </button>
+          ))}
+        </div>
+      </section>
 
-        <div className="popup-segmented" role="group" aria-label="Default command palette view">
-          {VIEW_OPTIONS.map(({ mode, label, Icon }) => {
-            const isActive = settings.viewMode === mode;
-            return (
-              <button
-                key={mode}
-                type="button"
-                className={`popup-segmented-item ${isActive ? "active" : ""}`}
-                aria-pressed={isActive}
-                disabled={mode === "gallery"}
-                aria-disabled={mode === "gallery"}
-                onClick={() => {
-                  if (mode !== "gallery") void updateViewMode(mode);
-                }}
-              >
-                <Icon size={13} />
-                <span>{label}</span>
-                {mode === "gallery" && <span className="popup-coming-soon">Coming soon</span>}
-              </button>
-            );
-          })}
+      <section className="popup-section popup-mouse-settings" aria-labelledby="mouse-settings-label">
+        <div className="popup-section-heading">
+          <span id="mouse-settings-label">Keyboard-only navigation</span>
+          <span className="popup-section-context">Disable mouse</span>
         </div>
+        <label className="popup-toggle-row">
+          <span>Tab switcher</span>
+          <input
+            type="checkbox"
+            checked={settings.disableMouseTabSwitcher}
+            onChange={(event) => void updateSetting("disableMouseTabSwitcher", event.target.checked)}
+          />
+        </label>
+        <label className="popup-toggle-row">
+          <span>Command palette</span>
+          <input
+            type="checkbox"
+            checked={settings.disableMouseCommandPalette}
+            onChange={(event) => void updateSetting("disableMouseCommandPalette", event.target.checked)}
+          />
+        </label>
       </section>
 
       <section className="popup-shortcuts" aria-label="Keyboard shortcuts">
@@ -110,6 +132,12 @@ export function Popup() {
           <span>Visual switcher</span>
           <span className="popup-key-group">
             <kbd>{shortcuts["open-tab-switcher"] ?? defaultSwitcherShortcut}</kbd>
+          </span>
+        </div>
+        <div className="popup-shortcut-row">
+          <span>Pin selected tab</span>
+          <span className="popup-key-group">
+            <kbd>{shortcuts["pin-tab"] ?? defaultPinShortcut}</kbd>
           </span>
         </div>
       </section>

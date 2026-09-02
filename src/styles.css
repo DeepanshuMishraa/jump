@@ -598,6 +598,11 @@ button {
   overflow: hidden;
 }
 
+.tab-pinned-icon {
+  flex: 0 0 auto;
+  color: var(--accent-primary);
+}
+
 .row-title {
   font-size: 14px;
   font-weight: 450;
@@ -936,14 +941,17 @@ kbd {
   max-width: 280px;
   margin: 0;
   padding: 0;
-  background: var(--popup-bg);
+  background: transparent;
   color: var(--text-primary);
-  overflow: visible;
+  overflow: hidden;
+  border-radius: 12px;
   user-select: none;
 }
 
 .popup-container {
   width: 100%;
+  overflow: hidden;
+  border-radius: 12px;
   background: var(--popup-bg);
 }
 
@@ -1100,6 +1108,28 @@ kbd {
 .popup-settings-link:focus-visible {
   outline: 2px solid var(--accent-primary);
   outline-offset: 1px;
+}
+
+.popup-mouse-settings {
+  padding-bottom: 10px;
+}
+
+.popup-toggle-row {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 450;
+}
+
+.popup-toggle-row input {
+  width: 30px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
 }
 
 .popup-shortcuts {
