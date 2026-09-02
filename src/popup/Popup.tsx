@@ -1,14 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { openShortcutSettings } from "../browser";
-import { ArrowUpRightIcon, CommandIcon, GridIcon, ListIcon } from "../icons";
+import { ArrowUpRightIcon, CommandIcon } from "../icons";
 import { DEFAULT_SETTINGS, getStoredSettings, saveStoredSettings } from "../settings";
-import type { UserSettings, ViewMode } from "../types";
+import type { TabSwitchMode, UserSettings } from "../types";
 import { resolveSettingsRead } from "./settingsState";
-
-const VIEW_OPTIONS = [
-  { mode: "list", label: "List", Icon: ListIcon },
-  { mode: "gallery", label: "Gallery", Icon: GridIcon },
-] as const;
 
 export function Popup() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
@@ -53,8 +48,6 @@ export function Popup() {
     if (settingsRevision.current === saveRevision) setSettings(next);
   };
 
-  const updateViewMode = (mode: ViewMode) => updateSetting("viewMode", mode);
-
   return (
     <main className="popup-container">
       <header className="popup-header">
@@ -72,33 +65,23 @@ export function Popup() {
         </div>
       </header>
 
-      <section className="popup-section" aria-labelledby="default-view-label">
+      <section className="popup-section" aria-labelledby="tab-switching-label">
         <div className="popup-section-heading">
-          <span id="default-view-label">Default view</span>
-          <span className="popup-section-context">Command palette</span>
+          <span id="tab-switching-label">Tab switching</span>
+          <span className="popup-section-context">Cycle order</span>
         </div>
-
-        <div className="popup-segmented" role="group" aria-label="Default command palette view">
-          {VIEW_OPTIONS.map(({ mode, label, Icon }) => {
-            const isActive = settings.viewMode === mode;
-            return (
-              <button
-                key={mode}
-                type="button"
-                className={`popup-segmented-item ${isActive ? "active" : ""}`}
-                aria-pressed={isActive}
-                disabled={mode === "gallery"}
-                aria-disabled={mode === "gallery"}
-                onClick={() => {
-                  if (mode !== "gallery") void updateViewMode(mode);
-                }}
-              >
-                <Icon size={13} />
-                <span>{label}</span>
-                {mode === "gallery" && <span className="popup-coming-soon">Coming soon</span>}
-              </button>
-            );
-          })}
+        <div className="popup-segmented" role="group" aria-label="Tab switching order">
+          {(["recent", "order"] as const satisfies readonly TabSwitchMode[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={`popup-segmented-item ${settings.tabSwitchMode === mode ? "active" : ""}`}
+              aria-pressed={settings.tabSwitchMode === mode}
+              onClick={() => void updateSetting("tabSwitchMode", mode)}
+            >
+              <span>{mode === "recent" ? "Recent" : "Tab order"}</span>
+            </button>
+          ))}
         </div>
       </section>
 

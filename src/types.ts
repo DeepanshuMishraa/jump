@@ -7,6 +7,7 @@ export type ColorTheme =
   | "gruvbox";
 
 export type ViewMode = "list" | "gallery";
+export type TabSwitchMode = "recent" | "order";
 
 export type PinnedTab = {
   tabId: number;
@@ -22,6 +23,7 @@ export type UserSettings = {
   theme: ColorTheme;
   disableMouseTabSwitcher: boolean;
   disableMouseCommandPalette: boolean;
+  tabSwitchMode: TabSwitchMode;
   pinnedTabs: PinnedTab[];
 };
 
@@ -31,6 +33,7 @@ export type PaletteTab = {
   title: string;
   url: string;
   hostname: string;
+  index: number;
   faviconUrl?: string;
   previewUrl?: string;
   active: boolean;

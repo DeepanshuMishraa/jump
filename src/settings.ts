@@ -1,10 +1,11 @@
-import type { ColorTheme, PinnedTab, UserSettings, ViewMode } from "./types";
+import type { ColorTheme, PinnedTab, TabSwitchMode, UserSettings, ViewMode } from "./types";
 
 export const DEFAULT_SETTINGS: UserSettings = {
   viewMode: "list",
   theme: "default",
   disableMouseTabSwitcher: false,
   disableMouseCommandPalette: false,
+  tabSwitchMode: "recent",
   pinnedTabs: [],
 };
 
@@ -84,6 +85,10 @@ function isColorTheme(value: unknown): value is ColorTheme {
     value === "tokyo-night" || value === "nord" || value === "gruvbox";
 }
 
+function isTabSwitchMode(value: unknown): value is TabSwitchMode {
+  return value === "recent" || value === "order";
+}
+
 function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean";
 }
@@ -145,12 +150,15 @@ export function parseStoredSettings(value: unknown): UserSettings {
   const disableMouseCommandPalette = "disableMouseCommandPalette" in value && isBoolean(value.disableMouseCommandPalette)
     ? value.disableMouseCommandPalette
     : DEFAULT_SETTINGS.disableMouseCommandPalette;
+  const tabSwitchMode = "tabSwitchMode" in value && isTabSwitchMode(value.tabSwitchMode)
+    ? value.tabSwitchMode
+    : DEFAULT_SETTINGS.tabSwitchMode;
   const pinnedTabs = "pinnedTabs" in value
     ? parsePinnedTabs(value.pinnedTabs)
     : "pinnedTabIds" in value
       ? parseLegacyPinnedTabs(value.pinnedTabIds)
       : DEFAULT_SETTINGS.pinnedTabs;
-  return { viewMode, theme, disableMouseTabSwitcher, disableMouseCommandPalette, pinnedTabs };
+  return { viewMode, theme, disableMouseTabSwitcher, disableMouseCommandPalette, tabSwitchMode, pinnedTabs };
 }
 
 function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
@@ -163,6 +171,9 @@ function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
       : {}),
     ...( "disableMouseCommandPalette" in value && isBoolean(value.disableMouseCommandPalette)
       ? { disableMouseCommandPalette: value.disableMouseCommandPalette }
+      : {}),
+    ...( "tabSwitchMode" in value && isTabSwitchMode(value.tabSwitchMode)
+      ? { tabSwitchMode: value.tabSwitchMode }
       : {}),
     ...( "pinnedTabs" in value ? { pinnedTabs: parsePinnedTabs(value.pinnedTabs) } : {}),
   };
@@ -200,6 +211,7 @@ async function readChromeLocalSettings() {
     "theme",
     "disableMouseTabSwitcher",
     "disableMouseCommandPalette",
+    "tabSwitchMode",
     "pinnedTabs",
     "pinnedTabIds",
   ]);

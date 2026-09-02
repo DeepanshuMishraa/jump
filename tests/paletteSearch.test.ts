@@ -25,6 +25,7 @@ test("keeps pinned tabs above unpinned matches", () => {
     title,
     url: `https://${title.toLowerCase()}.com`,
     hostname: `${title.toLowerCase()}.com`,
+    index: id,
     active: false,
     windowFocused: false,
     pinned,
@@ -43,6 +44,7 @@ test("includes browser history even when an open tab matches", () => {
     title: "Example",
     url: "https://example.com/",
     hostname: "example.com",
+    index: 0,
     active: false,
     windowFocused: true,
     pinned: false,
@@ -70,6 +72,32 @@ test("keeps closed pinned tabs in the palette", () => {
   ]);
   assert.deepEqual(buildSearchResults([], "missing", [], [], [pinnedTab]), [
     { kind: "search", query: "missing" },
+  ]);
+});
+
+test("keeps a saved pin separate when its original browser tab navigates away", () => {
+  const videoTab: PaletteTab = {
+    id: 42,
+    windowId: 1,
+    title: "A YouTube video",
+    url: "https://www.youtube.com/watch?v=example",
+    hostname: "youtube.com",
+    index: 0,
+    active: true,
+    windowFocused: true,
+    pinned: false,
+  };
+  const youtubePin: PinnedTab = {
+    tabId: 42,
+    identity: "https://www.youtube.com/",
+    url: "https://www.youtube.com/",
+    title: "YouTube",
+    hostname: "youtube.com",
+  };
+
+  assert.deepEqual(buildSearchResults([videoTab], "", [], [], [youtubePin]), [
+    { kind: "pinned", tab: youtubePin },
+    { kind: "tab", tab: videoTab },
   ]);
 });
 

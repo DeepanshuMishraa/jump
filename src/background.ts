@@ -209,23 +209,7 @@ async function getTabs(): Promise<PaletteTab[]> {
   const browserTabs = tabs.filter(
     (tab): tab is chrome.tabs.Tab & { id: number; windowId: number } => tab.id !== undefined,
   );
-  const pinnedTabs = settings.pinnedTabs.map((pinnedTab) => {
-    const matchingTab = browserTabs.find((tab) =>
-      tab.id === pinnedTab.tabId || pinnedTabIdentity(tab.url || "") === pinnedTab.identity,
-    );
-    if (!matchingTab) return pinnedTab;
-    return {
-      tabId: matchingTab.id,
-      identity: pinnedTabIdentity(matchingTab.url || ""),
-      url: matchingTab.url || pinnedTab.url,
-      title: matchingTab.title?.trim() || pinnedTab.title,
-      hostname: hostnameFor(matchingTab.url) || pinnedTab.hostname,
-      ...(matchingTab.favIconUrl ? { faviconUrl: matchingTab.favIconUrl } : {}),
-    };
-  });
-  if (JSON.stringify(pinnedTabs) !== JSON.stringify(settings.pinnedTabs)) {
-    void saveStoredSettings({ pinnedTabs });
-  }
+  const pinnedTabs = settings.pinnedTabs;
   if (prunePreviewCache()) await writePreviewCache();
 
   const focusedWindows = new Set(windows.filter((window) => window.focused).map((window) => window.id));
@@ -239,17 +223,20 @@ async function getTabs(): Promise<PaletteTab[]> {
         title: tab.title?.trim() || "Untitled tab",
         url: tab.url || "",
         hostname: hostnameFor(tab.url),
+        index: tab.index,
         faviconUrl: tab.favIconUrl,
         previewUrl: preview && preview.url === tab.url ? preview.dataUrl : undefined,
         active: Boolean(tab.active),
         windowFocused: focusedWindows.has(tab.windowId),
-        pinned: pinnedTabs.some((pinnedTab) => pinnedTab.tabId === tab.id ||
-          (pinnedTab.identity !== "" && pinnedTab.identity === pinnedTabIdentity(tab.url || ""))),
+        pinned: pinnedTabs.some((pinnedTab) =>
+          pinnedTab.identity !== "" && pinnedTab.identity === pinnedTabIdentity(tab.url || ""),
+        ),
         lastAccessed: tab.lastAccessed,
       };
     })
     .sort((a, b) => {
       if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      if (settings.tabSwitchMode === "order") return a.index - b.index;
       if (a.windowFocused !== b.windowFocused) return a.windowFocused ? -1 : 1;
       if (a.active !== b.active) return a.active ? -1 : 1;
       return (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0);
@@ -323,9 +310,7 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResp
   if (message.type === "set-tab-pinned") {
     void getStoredSettings()
       .then((settings) => {
-        const pinnedTabs = settings.pinnedTabs.filter((tab) =>
-          tab.tabId !== message.tab.tabId && tab.identity !== message.tab.identity,
-        );
+        const pinnedTabs = settings.pinnedTabs.filter((tab) => tab.identity !== message.tab.identity);
         if (message.pinned) pinnedTabs.push(message.tab);
         return saveStoredSettings({ pinnedTabs });
       })

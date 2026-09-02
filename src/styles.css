@@ -934,14 +934,17 @@ kbd {
   max-width: 280px;
   margin: 0;
   padding: 0;
-  background: var(--popup-bg);
+  background: transparent;
   color: var(--text-primary);
-  overflow: visible;
+  overflow: hidden;
+  border-radius: 12px;
   user-select: none;
 }
 
 .popup-container {
   width: 100%;
+  overflow: hidden;
+  border-radius: 12px;
   background: var(--popup-bg);
 }
 
