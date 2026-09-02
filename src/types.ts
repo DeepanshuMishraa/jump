@@ -24,6 +24,8 @@ export type PaletteTab = {
   active: boolean;
   windowFocused: boolean;
   pinned: boolean;
+  audible: boolean;
+  muted: boolean;
   lastAccessed?: number;
 };
 
