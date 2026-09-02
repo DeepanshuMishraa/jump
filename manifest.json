@@ -38,6 +38,13 @@
         "mac": "Alt+Q"
       },
       "description": "Open the visual tab switcher"
+    },
+    "pin-tab": {
+      "suggested_key": {
+        "default": "Ctrl+K",
+        "mac": "Command+K"
+      },
+      "description": "Pin or unpin the selected tab"
     }
   }
 }

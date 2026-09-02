@@ -1,3 +1,4 @@
+import { getStoredSettings, saveStoredSettings } from "./settings";
 import type { BrowserMessage, PaletteTab } from "./types";
 
 type PreviewEntry = {
@@ -150,11 +151,13 @@ async function sendToActiveTab(message: BrowserMessage) {
 }
 
 async function getTabs(): Promise<PaletteTab[]> {
-  const [tabs, windows] = await Promise.all([
+  const [tabs, windows, settings] = await Promise.all([
     chrome.tabs.query({}),
     chrome.windows.getAll({ populate: false }),
+    getStoredSettings(),
     previewCacheReady,
   ]);
+  const pinnedTabIds = new Set(settings.pinnedTabIds);
   if (prunePreviewCache()) await writePreviewCache();
 
   const focusedWindows = new Set(windows.filter((window) => window.focused).map((window) => window.id));
@@ -173,11 +176,12 @@ async function getTabs(): Promise<PaletteTab[]> {
         previewUrl: preview && preview.url === tab.url ? preview.dataUrl : undefined,
         active: Boolean(tab.active),
         windowFocused: focusedWindows.has(tab.windowId),
-        pinned: Boolean(tab.pinned),
+        pinned: pinnedTabIds.has(tab.id),
         lastAccessed: tab.lastAccessed,
       };
     })
     .sort((a, b) => {
+      if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
       if (a.windowFocused !== b.windowFocused) return a.windowFocused ? -1 : 1;
       if (a.active !== b.active) return a.active ? -1 : 1;
       return (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0);
@@ -225,6 +229,7 @@ async function openTabSwitcher() {
 chrome.commands.onCommand.addListener((command) => {
   if (command === "open-palette") void openSearchPalette();
   if (command === "open-tab-switcher") void openTabSwitcher();
+  if (command === "pin-tab") void sendToActiveTab({ type: "request-pin-selected-tab" });
 });
 
 chrome.action.onClicked.addListener(() => void openSearchPalette());
@@ -256,6 +261,18 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResp
   if (message.type === "activate-tab") {
     void chrome.tabs.update(message.tab.id, { active: true })
       .then(() => chrome.windows.update(message.tab.windowId, { focused: true }))
+      .then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  if (message.type === "set-tab-pinned") {
+    void getStoredSettings()
+      .then((settings) => {
+        const pinnedTabIds = new Set(settings.pinnedTabIds);
+        if (message.pinned) pinnedTabIds.add(message.tabId);
+        else pinnedTabIds.delete(message.tabId);
+        return saveStoredSettings({ pinnedTabIds: [...pinnedTabIds] });
+      })
       .then(() => sendResponse({ ok: true }));
     return true;
   }

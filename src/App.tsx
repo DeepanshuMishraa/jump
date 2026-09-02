@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, type BrowserHistoryItem } from "./browser";
-import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, SearchIcon, XIcon } from "./icons";
+import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, setTabPinned, type BrowserHistoryItem } from "./browser";
+import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
@@ -71,6 +71,7 @@ function SwitcherCard({
       <div className="switcher-card-footer">
         <TabFavicon tab={tab} size={18} />
         <span className="switcher-card-title">{tab.title}</span>
+        {tab.pinned && <PinIcon className="tab-pinned-icon" size={13} />}
       </div>
     </div>
   );
@@ -117,6 +118,7 @@ function GalleryCard({
         <div className="gallery-meta-left">
           <TabFavicon tab={tab} size={15} />
           <span className="gallery-title">{tab.title}</span>
+          {tab.pinned && <PinIcon className="tab-pinned-icon" size={12} />}
         </div>
         {tab.hostname && <span className="gallery-domain">{tab.hostname}</span>}
       </div>
@@ -248,6 +250,11 @@ export function App({
             ? (curr - 1 + tabs.length) % tabs.length
             : (curr + 1) % tabs.length;
         });
+      } else if (message.type === "request-pin-selected-tab") {
+        const selectedTab = tabs[selectedIndex];
+        if (selectedTab) {
+          void setTabPinned(selectedTab.id, !selectedTab.pinned).then(() => void refreshTabs());
+        }
       }
     };
 
@@ -255,7 +262,7 @@ export function App({
       chrome.runtime.onMessage.addListener(handleMessage);
       return () => chrome.runtime.onMessage.removeListener(handleMessage);
     }
-  }, [tabs.length]);
+  }, [tabs.length, selectedIndex, refreshTabs]);
 
   // Switch to selected tab
   const switchTab = useCallback(
@@ -585,6 +592,7 @@ export function App({
                         </span>
                         <div className="row-content">
                           <span className="row-title">{tab.title}</span>
+                          {tab.pinned && <PinIcon className="tab-pinned-icon" size={12} />}
                           {tab.hostname && tab.hostname !== tab.title && (
                             <span className="row-domain">— {tab.hostname}</span>
                           )}

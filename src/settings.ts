@@ -5,6 +5,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   theme: "default",
   disableMouseTabSwitcher: false,
   disableMouseCommandPalette: false,
+  pinnedTabIds: [],
 };
 
 export type ThemeInfo = {
@@ -87,6 +88,12 @@ function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean";
 }
 
+function parsePinnedTabIds(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((tabId): tabId is number => typeof tabId === "number" && Number.isInteger(tabId) && tabId > 0)
+    : [];
+}
+
 export function parseStoredSettings(value: unknown): UserSettings {
   if (typeof value !== "object" || value === null) return DEFAULT_SETTINGS;
   const viewMode = "viewMode" in value && isViewMode(value.viewMode) ? value.viewMode : DEFAULT_SETTINGS.viewMode;
@@ -97,7 +104,8 @@ export function parseStoredSettings(value: unknown): UserSettings {
   const disableMouseCommandPalette = "disableMouseCommandPalette" in value && isBoolean(value.disableMouseCommandPalette)
     ? value.disableMouseCommandPalette
     : DEFAULT_SETTINGS.disableMouseCommandPalette;
-  return { viewMode, theme, disableMouseTabSwitcher, disableMouseCommandPalette };
+  const pinnedTabIds = "pinnedTabIds" in value ? parsePinnedTabIds(value.pinnedTabIds) : DEFAULT_SETTINGS.pinnedTabIds;
+  return { viewMode, theme, disableMouseTabSwitcher, disableMouseCommandPalette, pinnedTabIds };
 }
 
 function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
@@ -111,6 +119,7 @@ function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
     ...( "disableMouseCommandPalette" in value && isBoolean(value.disableMouseCommandPalette)
       ? { disableMouseCommandPalette: value.disableMouseCommandPalette }
       : {}),
+    ...( "pinnedTabIds" in value ? { pinnedTabIds: parsePinnedTabIds(value.pinnedTabIds) } : {}),
   };
 }
 
@@ -146,6 +155,7 @@ async function readChromeLocalSettings() {
     "theme",
     "disableMouseTabSwitcher",
     "disableMouseCommandPalette",
+    "pinnedTabIds",
   ]);
   return parseStoredSettings(stored);
 }
@@ -170,6 +180,7 @@ export async function getStoredSettings(): Promise<UserSettings> {
         "theme",
         "disableMouseTabSwitcher",
         "disableMouseCommandPalette",
+        "pinnedTabIds",
       ]));
       selectedBackend = "sync";
       return settings;

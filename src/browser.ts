@@ -20,6 +20,10 @@ export async function activateTab(tab: PaletteTab) {
   await chrome.runtime.sendMessage({ type: "activate-tab", tab } satisfies BrowserMessage);
 }
 
+export async function setTabPinned(tabId: number, pinned: boolean) {
+  await chrome.runtime.sendMessage({ type: "set-tab-pinned", tabId, pinned } satisfies BrowserMessage);
+}
+
 export async function openShortcutSettings() {
   await chrome.runtime.sendMessage({ type: "open-shortcut-settings" } satisfies BrowserMessage);
 }

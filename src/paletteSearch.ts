@@ -73,7 +73,7 @@ export function searchTabs(tabs: PaletteTab[], query: string) {
   return tabs
     .map((tab, index) => ({ tab, score: scoreTab(tab, trimmed), index }))
     .filter((entry) => entry.score >= 0)
-    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .sort((a, b) => (a.tab.pinned === b.tab.pinned ? b.score - a.score || a.index - b.index : a.tab.pinned ? -1 : 1))
     .map(({ tab }) => tab);
 }
 

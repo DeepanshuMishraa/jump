@@ -17,6 +17,7 @@ export function Popup() {
   const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
   const defaultSearchShortcut = isMac ? "⌘⇧P" : "Ctrl Shift P";
   const defaultSwitcherShortcut = isMac ? "⌥Q" : "Alt Q";
+  const defaultPinShortcut = isMac ? "⌘K" : "Ctrl K";
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
     ? chrome.runtime.getManifest().version
     : "0.1.3";
@@ -135,6 +136,12 @@ export function Popup() {
           <span>Visual switcher</span>
           <span className="popup-key-group">
             <kbd>{shortcuts["open-tab-switcher"] ?? defaultSwitcherShortcut}</kbd>
+          </span>
+        </div>
+        <div className="popup-shortcut-row">
+          <span>Pin selected tab</span>
+          <span className="popup-key-group">
+            <kbd>{shortcuts["pin-tab"] ?? defaultPinShortcut}</kbd>
           </span>
         </div>
       </section>

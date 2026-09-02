@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { browserUrlFor, buildSearchResults, parseBang } from "../src/paletteSearch.ts";
+import { browserUrlFor, buildSearchResults, parseBang, searchTabs } from "../src/paletteSearch.ts";
+import type { PaletteTab } from "../src/types.ts";
 
 test("parses supported bang searches", () => {
   assert.deepEqual(parseBang("!gh react hooks"), {
@@ -15,6 +16,24 @@ test("keeps unknown bangs as regular web searches", () => {
   const results = buildSearchResults([], "!unknown query");
   assert.deepEqual(results, [{ kind: "search", query: "!unknown query" }]);
   assert.deepEqual(buildSearchResults([], "!constructor query"), [{ kind: "search", query: "!constructor query" }]);
+});
+
+test("keeps pinned tabs above unpinned matches", () => {
+  const tab = (id: number, title: string, pinned: boolean): PaletteTab => ({
+    id,
+    windowId: 1,
+    title,
+    url: `https://${title.toLowerCase()}.com`,
+    hostname: `${title.toLowerCase()}.com`,
+    active: false,
+    windowFocused: false,
+    pinned,
+  });
+
+  assert.deepEqual(
+    searchTabs([tab(1, "Other", false), tab(2, "Match", true)], "match").map(({ id }) => id),
+    [2],
+  );
 });
 
 test("recognizes real URLs without treating dotted words as hosts", () => {

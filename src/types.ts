@@ -13,6 +13,7 @@ export type UserSettings = {
   theme: ColorTheme;
   disableMouseTabSwitcher: boolean;
   disableMouseCommandPalette: boolean;
+  pinnedTabIds: number[];
 };
 
 export type PaletteTab = {
@@ -39,6 +40,8 @@ export type BrowserMessage =
   | { type: "open-palette"; mode?: "search" | "switcher"; previewUrl?: string }
   | { type: "update-switcher-preview"; previewUrl: string }
   | { type: "cycle-tab-switcher"; direction?: "next" | "prev" }
+  | { type: "request-pin-selected-tab" }
+  | { type: "set-tab-pinned"; tabId: number; pinned: boolean }
   | { type: "get-settings" }
   | { type: "save-settings"; settings: Partial<UserSettings> };
 
