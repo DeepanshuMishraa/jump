@@ -3,6 +3,8 @@ import type { ColorTheme, UserSettings, ViewMode } from "./types";
 export const DEFAULT_SETTINGS: UserSettings = {
   viewMode: "list",
   theme: "default",
+  disableMouseTabSwitcher: false,
+  disableMouseCommandPalette: false,
 };
 
 export type ThemeInfo = {
@@ -81,11 +83,21 @@ function isColorTheme(value: unknown): value is ColorTheme {
     value === "tokyo-night" || value === "nord" || value === "gruvbox";
 }
 
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === "boolean";
+}
+
 export function parseStoredSettings(value: unknown): UserSettings {
   if (typeof value !== "object" || value === null) return DEFAULT_SETTINGS;
   const viewMode = "viewMode" in value && isViewMode(value.viewMode) ? value.viewMode : DEFAULT_SETTINGS.viewMode;
   const theme = "theme" in value && isColorTheme(value.theme) ? value.theme : DEFAULT_SETTINGS.theme;
-  return { viewMode, theme };
+  const disableMouseTabSwitcher = "disableMouseTabSwitcher" in value && isBoolean(value.disableMouseTabSwitcher)
+    ? value.disableMouseTabSwitcher
+    : DEFAULT_SETTINGS.disableMouseTabSwitcher;
+  const disableMouseCommandPalette = "disableMouseCommandPalette" in value && isBoolean(value.disableMouseCommandPalette)
+    ? value.disableMouseCommandPalette
+    : DEFAULT_SETTINGS.disableMouseCommandPalette;
+  return { viewMode, theme, disableMouseTabSwitcher, disableMouseCommandPalette };
 }
 
 function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
@@ -93,6 +105,12 @@ function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
   return {
     ...( "viewMode" in value && isViewMode(value.viewMode) ? { viewMode: value.viewMode } : {}),
     ...( "theme" in value && isColorTheme(value.theme) ? { theme: value.theme } : {}),
+    ...( "disableMouseTabSwitcher" in value && isBoolean(value.disableMouseTabSwitcher)
+      ? { disableMouseTabSwitcher: value.disableMouseTabSwitcher }
+      : {}),
+    ...( "disableMouseCommandPalette" in value && isBoolean(value.disableMouseCommandPalette)
+      ? { disableMouseCommandPalette: value.disableMouseCommandPalette }
+      : {}),
   };
 }
 
@@ -123,7 +141,12 @@ function writeLocalSettings(settings: UserSettings) {
 
 async function readChromeLocalSettings() {
   if (!canUseChromeLocalStorage()) throw new Error("Local extension storage is unavailable");
-  const stored: unknown = await chrome.storage.local.get(["viewMode", "theme"]);
+  const stored: unknown = await chrome.storage.local.get([
+    "viewMode",
+    "theme",
+    "disableMouseTabSwitcher",
+    "disableMouseCommandPalette",
+  ]);
   return parseStoredSettings(stored);
 }
 
@@ -142,7 +165,12 @@ export async function getStoredSettings(): Promise<UserSettings> {
 
   if (canUseSyncStorage()) {
     try {
-      const settings = parseStoredSettings(await chrome.storage.sync.get(["viewMode", "theme"]));
+      const settings = parseStoredSettings(await chrome.storage.sync.get([
+        "viewMode",
+        "theme",
+        "disableMouseTabSwitcher",
+        "disableMouseCommandPalette",
+      ]));
       selectedBackend = "sync";
       return settings;
     } catch {

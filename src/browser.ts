@@ -24,11 +24,11 @@ export async function openShortcutSettings() {
   await chrome.runtime.sendMessage({ type: "open-shortcut-settings" } satisfies BrowserMessage);
 }
 
-export async function openUrl(url: string) {
-  await chrome.runtime.sendMessage({ type: "open-url", url } satisfies BrowserMessage);
+export async function openUrl(url: string, openerTabId?: number) {
+  await chrome.runtime.sendMessage({ type: "open-url", url, openerTabId } satisfies BrowserMessage);
 }
 
-export async function searchWeb(query: string) {
-  await chrome.runtime.sendMessage({ type: "search-web", query } satisfies BrowserMessage);
+export async function searchWeb(query: string, openerTabId?: number) {
+  await chrome.runtime.sendMessage({ type: "search-web", query, openerTabId } satisfies BrowserMessage);
 }
 

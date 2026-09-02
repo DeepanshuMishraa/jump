@@ -58,11 +58,15 @@ test("a pending popup read does not replace a newer user selection", () => {
 test("persisted settings validate fields independently", () => {
   assert.deepEqual(
     parseStoredSettings({ viewMode: "unsupported", theme: "nord", extra: "ignored" }),
-    { viewMode: "list", theme: "nord" },
+    { ...DEFAULT_SETTINGS, theme: "nord" },
   );
   assert.deepEqual(
     parseStoredSettings({ viewMode: { value: "gallery" }, theme: "unknown" }),
     DEFAULT_SETTINGS,
+  );
+  assert.deepEqual(
+    parseStoredSettings({ disableMouseTabSwitcher: true, disableMouseCommandPalette: "yes" }),
+    { ...DEFAULT_SETTINGS, disableMouseTabSwitcher: true },
   );
 });
 
@@ -89,7 +93,7 @@ test("overlapping saves preserve both partial updates", async () => {
     settings.saveStoredSettings({ theme: "nord" }),
   ]);
 
-  assert.deepEqual(stored, { viewMode: "gallery", theme: "nord" });
+  assert.deepEqual(stored, { ...DEFAULT_SETTINGS, viewMode: "gallery", theme: "nord" });
   assert.equal(maximumActiveWrites, 1);
 });
 

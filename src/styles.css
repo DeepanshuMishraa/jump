@@ -1094,6 +1094,28 @@ kbd {
   outline-offset: 1px;
 }
 
+.popup-mouse-settings {
+  padding-bottom: 10px;
+}
+
+.popup-toggle-row {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 450;
+}
+
+.popup-toggle-row input {
+  width: 30px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
 .popup-shortcuts {
   padding: 10px 16px 8px;
 }

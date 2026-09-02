@@ -261,7 +261,7 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResp
   }
 
   if (message.type === "open-url") {
-    void chrome.tabs.create({ url: message.url })
+    void chrome.tabs.create({ url: message.url, openerTabId: message.openerTabId })
       .then(() => sendResponse({ ok: true }));
     return true;
   }

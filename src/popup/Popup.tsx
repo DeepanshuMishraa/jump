@@ -44,13 +44,15 @@ export function Popup() {
     });
   }, []);
 
-  const updateViewMode = async (mode: ViewMode) => {
+  const updateSetting = async <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
     const saveRevision = settingsRevision.current + 1;
     settingsRevision.current = saveRevision;
-    setSettings((current) => ({ ...current, viewMode: mode }));
-    const next = await saveStoredSettings({ viewMode: mode });
+    setSettings((current) => ({ ...current, [key]: value }));
+    const next = await saveStoredSettings({ [key]: value });
     if (settingsRevision.current === saveRevision) setSettings(next);
   };
+
+  const updateViewMode = (mode: ViewMode) => updateSetting("viewMode", mode);
 
   return (
     <main className="popup-container">
@@ -97,6 +99,29 @@ export function Popup() {
             );
           })}
         </div>
+      </section>
+
+      <section className="popup-section popup-mouse-settings" aria-labelledby="mouse-settings-label">
+        <div className="popup-section-heading">
+          <span id="mouse-settings-label">Keyboard-only navigation</span>
+          <span className="popup-section-context">Disable mouse</span>
+        </div>
+        <label className="popup-toggle-row">
+          <span>Tab switcher</span>
+          <input
+            type="checkbox"
+            checked={settings.disableMouseTabSwitcher}
+            onChange={(event) => void updateSetting("disableMouseTabSwitcher", event.target.checked)}
+          />
+        </label>
+        <label className="popup-toggle-row">
+          <span>Command palette</span>
+          <input
+            type="checkbox"
+            checked={settings.disableMouseCommandPalette}
+            onChange={(event) => void updateSetting("disableMouseCommandPalette", event.target.checked)}
+          />
+        </label>
       </section>
 
       <section className="popup-shortcuts" aria-label="Keyboard shortcuts">

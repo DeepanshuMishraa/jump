@@ -11,6 +11,8 @@ export type ViewMode = "list" | "gallery";
 export type UserSettings = {
   viewMode: ViewMode;
   theme: ColorTheme;
+  disableMouseTabSwitcher: boolean;
+  disableMouseCommandPalette: boolean;
 };
 
 export type PaletteTab = {
@@ -31,8 +33,8 @@ export type BrowserMessage =
   | { type: "get-tabs" }
   | { type: "search-history"; query: string; maxResults?: number }
   | { type: "activate-tab"; tab: PaletteTab }
-  | { type: "open-url"; url: string }
-  | { type: "search-web"; query: string }
+  | { type: "open-url"; url: string; openerTabId?: number }
+  | { type: "search-web"; query: string; openerTabId?: number }
   | { type: "open-shortcut-settings" }
   | { type: "open-palette"; mode?: "search" | "switcher"; previewUrl?: string }
   | { type: "update-switcher-preview"; previewUrl: string }

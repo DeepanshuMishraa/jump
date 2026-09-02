@@ -49,8 +49,8 @@ export function PaletteAction({
   result: Exclude<SearchResult, { kind: "tab" }>;
   index: number;
   isSelected: boolean;
-  onClick: () => void;
-  onMouseEnter: () => void;
+  onClick?: () => void;
+  onMouseEnter?: () => void;
 }) {
   const isBang = result.kind === "bang";
   const isUrl = result.kind === "url";

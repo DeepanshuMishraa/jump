@@ -40,8 +40,8 @@ function SwitcherCard({
   isSelected: boolean;
   previewUrl?: string;
   index: number;
-  onClick: () => void;
-  onMouseEnter: () => void;
+  onClick?: () => void;
+  onMouseEnter?: () => void;
 }) {
   const effectivePreview = tab.previewUrl || (tab.active && tab.windowFocused ? previewUrl : undefined);
 
@@ -88,8 +88,8 @@ function GalleryCard({
   index: number;
   isSelected: boolean;
   previewUrl?: string;
-  onClick: () => void;
-  onMouseEnter: () => void;
+  onClick?: () => void;
+  onMouseEnter?: () => void;
 }) {
   const effectivePreview = tab.previewUrl || (tab.active && tab.windowFocused ? previewUrl : undefined);
 
@@ -274,8 +274,9 @@ export function App({
       return;
     }
 
+    const openerTabId = tabs.find((tab) => tab.active && tab.windowFocused)?.id;
     if (result.kind === "visited") {
-      void openUrl(result.item.url);
+      void openUrl(result.item.url, openerTabId);
       handleClose();
       return;
     }
@@ -285,10 +286,10 @@ export function App({
     if (!action || action.kind === "tab" || action.kind === "history" || action.kind === "visited") return;
 
     void recordSearch(input).then(() => getSearchHistory().then(setHistory));
-    if (action.kind === "url" || action.kind === "bang") void openUrl(action.url);
-    else void searchWeb(action.query);
+    if (action.kind === "url" || action.kind === "bang") void openUrl(action.url, openerTabId);
+    else void searchWeb(action.query, openerTabId);
     handleClose();
-  }, [handleClose, switchTab, query]);
+  }, [handleClose, switchTab, query, tabs]);
 
   // Global keyup/keydown handler for releasing Alt key and cycling in switcher mode
   useEffect(() => {
@@ -433,8 +434,8 @@ export function App({
                   index={index}
                   isSelected={index === selectedIndex}
                   previewUrl={currentPreviewUrl}
-                  onClick={() => void switchTab(tab)}
-                  onMouseEnter={() => setSelectedIndex(index)}
+                  onClick={settings.disableMouseTabSwitcher ? undefined : () => void switchTab(tab)}
+                  onMouseEnter={settings.disableMouseTabSwitcher ? undefined : () => setSelectedIndex(index)}
                 />
               ))
             )}
@@ -538,8 +539,8 @@ export function App({
                     index={index}
                     isSelected={index === selectedIndex}
                     previewUrl={currentPreviewUrl}
-                    onClick={() => executeResult(result)}
-                    onMouseEnter={() => setSelectedIndex(index)}
+                    onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
+                    onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
                   />
                 ) : (
                   <PaletteAction
@@ -547,8 +548,8 @@ export function App({
                     result={result}
                     index={index}
                     isSelected={index === selectedIndex}
-                    onMouseEnter={() => setSelectedIndex(index)}
-                    onClick={() => executeResult(result)}
+                    onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
+                    onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                   />
                 ))
               ) : (
@@ -561,8 +562,8 @@ export function App({
                         result={result}
                         index={index}
                         isSelected={isSelected}
-                        onMouseEnter={() => setSelectedIndex(index)}
-                        onClick={() => executeResult(result)}
+                        onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
+                        onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                       />
                     );
                   }
@@ -575,8 +576,8 @@ export function App({
                       className={`list-row ${isSelected ? "selected" : ""}`}
                       role="option"
                       aria-selected={isSelected}
-                      onMouseEnter={() => setSelectedIndex(index)}
-                      onClick={() => executeResult(result)}
+                      onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
+                      onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                     >
                       <div className="list-row-left">
                         <span className="tab-favicon-wrapper">
