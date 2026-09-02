@@ -80,6 +80,17 @@ test("persisted settings validate fields independently", () => {
   );
 });
 
+test("migrates legacy pinned tab IDs", () => {
+  assert.deepEqual(parseStoredSettings({ pinnedTabIds: [12, "bad", 0] }), {
+    ...DEFAULT_SETTINGS,
+    pinnedTabs: [{ tabId: 12, identity: "", url: "", title: "Pinned tab", hostname: "" }],
+  });
+});
+
+test("ignores invalid legacy pinned tab IDs", () => {
+  assert.deepEqual(parseStoredSettings({ pinnedTabIds: "bad" }), DEFAULT_SETTINGS);
+});
+
 test("overlapping saves preserve both partial updates", async () => {
   installLocalStorage();
   let stored: Record<string, unknown> = { ...DEFAULT_SETTINGS };

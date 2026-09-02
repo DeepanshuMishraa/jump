@@ -24,6 +24,10 @@ type HistoryResult = {
 
 const historyCache = new Map<string, HistoryResult[]>();
 const historyRequests = new Map<string, Promise<HistoryResult[]>>();
+function invalidateHistoryCache() {
+  historyCache.clear();
+}
+let pinUpdateQueue = Promise.resolve();
 
 const previewCache = new Map<number, PreviewEntry>();
 
@@ -163,13 +167,6 @@ function searchHistory(query: string, maxResults: number) {
   if (cached) return Promise.resolve(cached.slice(0, maxResults));
 
   const allHistory = historyCache.get("");
-  if (allHistory) {
-    const matching = allHistory.filter((item) =>
-      `${item.title} ${item.url}`.toLowerCase().includes(key),
-    );
-    return Promise.resolve(matching.slice(0, maxResults));
-  }
-
   const activeRequest = historyRequests.get(key);
   if (activeRequest) return activeRequest.then((items) => items.slice(0, maxResults));
 
@@ -209,7 +206,22 @@ async function getTabs(): Promise<PaletteTab[]> {
   const browserTabs = tabs.filter(
     (tab): tab is chrome.tabs.Tab & { id: number; windowId: number } => tab.id !== undefined,
   );
-  const pinnedTabs = settings.pinnedTabs;
+  const pinnedTabs = settings.pinnedTabs.flatMap((pinnedTab) => {
+    if (pinnedTab.identity) return [pinnedTab];
+    const matchingTab = browserTabs.find((tab) => tab.id === pinnedTab.tabId);
+    if (!matchingTab?.url) return [];
+    return [{
+      ...pinnedTab,
+      identity: pinnedTabIdentity(matchingTab.url),
+      url: matchingTab.url,
+      title: matchingTab.title?.trim() || pinnedTab.title,
+      hostname: hostnameFor(matchingTab.url),
+      ...(matchingTab.favIconUrl ? { faviconUrl: matchingTab.favIconUrl } : {}),
+    }];
+  });
+  if (JSON.stringify(pinnedTabs) !== JSON.stringify(settings.pinnedTabs)) {
+    void saveStoredSettings({ pinnedTabs });
+  }
   if (prunePreviewCache()) await writePreviewCache();
 
   const focusedWindows = new Set(windows.filter((window) => window.focused).map((window) => window.id));
@@ -228,9 +240,11 @@ async function getTabs(): Promise<PaletteTab[]> {
         previewUrl: preview && preview.url === tab.url ? preview.dataUrl : undefined,
         active: Boolean(tab.active),
         windowFocused: focusedWindows.has(tab.windowId),
-        pinned: pinnedTabs.some((pinnedTab) =>
-          pinnedTab.identity !== "" && pinnedTab.identity === pinnedTabIdentity(tab.url || ""),
-        ),
+        pinned: pinnedTabs.some((pinnedTab) => {
+          if (pinnedTab.identity !== pinnedTabIdentity(tab.url || "")) return false;
+          const liveIdMatch = browserTabs.some((candidate) => candidate.id === pinnedTab.tabId);
+          return !liveIdMatch || pinnedTab.tabId === tab.id;
+        }),
         lastAccessed: tab.lastAccessed,
       };
     })
@@ -242,6 +256,9 @@ async function getTabs(): Promise<PaletteTab[]> {
       return (b.lastAccessed ?? 0) - (a.lastAccessed ?? 0);
     });
 }
+
+chrome.history.onVisited.addListener(invalidateHistoryCache);
+chrome.history.onVisitRemoved.addListener(invalidateHistoryCache);
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   void removeCachedPreview(tabId);
@@ -277,7 +294,12 @@ async function openTabSwitcher() {
     : undefined;
 
   if (currentTab) {
-    await sendToTab(currentTab, { type: "open-palette", mode: "switcher", previewUrl });
+    await sendToTab(currentTab, {
+      type: "open-palette",
+      mode: "switcher",
+      previewUrl,
+      activeTabId: currentTab.id,
+    });
   }
 }
 
@@ -308,13 +330,13 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResp
   }
 
   if (message.type === "set-tab-pinned") {
-    void getStoredSettings()
-      .then((settings) => {
-        const pinnedTabs = settings.pinnedTabs.filter((tab) => tab.identity !== message.tab.identity);
-        if (message.pinned) pinnedTabs.push(message.tab);
-        return saveStoredSettings({ pinnedTabs });
-      })
-      .then(() => sendResponse({ ok: true }));
+    pinUpdateQueue = pinUpdateQueue.then(async () => {
+      const settings = await getStoredSettings();
+      const pinnedTabs = settings.pinnedTabs.filter((tab) => tab.identity !== message.tab.identity);
+      if (message.pinned) pinnedTabs.push(message.tab);
+      await saveStoredSettings({ pinnedTabs });
+    });
+    void pinUpdateQueue.then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
     return true;
   }
 

@@ -238,9 +238,12 @@ export function App({
             setCurrentPreviewUrl(message.previewUrl);
           }
           setIsExpanded(true);
-          setSelectedIndex((curr) => {
+          setSelectedIndex(() => {
             if (tabs.length === 0) return 0;
-            return (curr + 1) % tabs.length;
+            const activeIndex = message.activeTabId === undefined
+              ? -1
+              : tabs.findIndex((tab) => tab.id === message.activeTabId);
+            return (activeIndex + 1 + tabs.length) % tabs.length;
           });
         } else {
           setMode("search");
@@ -257,7 +260,9 @@ export function App({
             : (curr + 1) % tabs.length;
         });
       } else if (message.type === "request-pin-selected-tab") {
-        const selectedResult = resultsRef.current[selectedIndex];
+        const selectedResult = isSwitcher
+          ? (tabs[selectedIndex] ? { kind: "tab" as const, tab: tabs[selectedIndex] } : undefined)
+          : resultsRef.current[selectedIndex];
         if (selectedResult?.kind === "tab") {
           void setTabPinned(selectedResult.tab, !selectedResult.tab.pinned).then(() => void refreshTabs());
         } else if (selectedResult?.kind === "pinned") {
@@ -270,7 +275,7 @@ export function App({
       chrome.runtime.onMessage.addListener(handleMessage);
       return () => chrome.runtime.onMessage.removeListener(handleMessage);
     }
-  }, [tabs.length, selectedIndex, refreshTabs]);
+  }, [tabs, selectedIndex, refreshTabs, isSwitcher]);
 
   // Switch to selected tab
   const switchTab = useCallback(
@@ -302,7 +307,7 @@ export function App({
 
     void recordSearch(input).then(() => getSearchHistory().then(setHistory));
     if (action.kind === "url" || action.kind === "bang") void openUrl(action.url, openerTabId);
-    else void searchWeb(action.query, openerTabId);
+    else void searchWeb(action.query);
     handleClose();
   }, [handleClose, switchTab, query, tabs]);
 
@@ -371,7 +376,9 @@ export function App({
     () => buildSearchResults(tabs, query, history, browserHistory, closedPinnedTabs),
     [query, tabs, history, browserHistory, closedPinnedTabs],
   );
-  resultsRef.current = results;
+  useEffect(() => {
+    resultsRef.current = results;
+  }, [results]);
 
   // Adjust selected index bounds for search list
   useEffect(() => {
@@ -410,14 +417,14 @@ export function App({
       event.preventDefault();
       const direction = event.key === "ArrowRight" ? 1 : -1;
       setSelectedIndex((index) => Math.max(0, Math.min(index + direction, results.length - 1)));
-    } else if (event.key === "ArrowDown" || (event.key.toLowerCase() === "j" && (event.metaKey || event.ctrlKey))) {
+    } else if (event.key === "ArrowDown") {
       event.preventDefault();
       setIsExpanded(true);
       const step = isGallery ? 2 : 1;
       setSelectedIndex((index) => isGallery
         ? Math.min(index + step, Math.max(0, results.length - 1))
         : results.length ? (index + step) % results.length : 0);
-    } else if (event.key === "ArrowUp" || (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey))) {
+    } else if (event.key === "ArrowUp") {
       event.preventDefault();
       const step = isGallery ? 2 : 1;
       if (selectedIndex < step && !query) {

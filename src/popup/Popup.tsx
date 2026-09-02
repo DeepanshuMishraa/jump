@@ -12,7 +12,7 @@ export function Popup() {
   const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
   const defaultSearchShortcut = isMac ? "⌘⇧P" : "Ctrl Shift P";
   const defaultSwitcherShortcut = isMac ? "⌥Q" : "Alt Q";
-  const defaultPinShortcut = isMac ? "⌘K" : "Ctrl K";
+  const defaultPinShortcut = isMac ? "⌘K" : "Alt K";
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
     ? chrome.runtime.getManifest().version
     : "0.1.3";
@@ -26,6 +26,8 @@ export function Popup() {
         readRevision,
         settingsRevision.current,
       ));
+    }).catch(() => {
+      // Keep defaults when settings are temporarily unavailable.
     });
   }, []);
 
@@ -43,9 +45,20 @@ export function Popup() {
   const updateSetting = async <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
     const saveRevision = settingsRevision.current + 1;
     settingsRevision.current = saveRevision;
+    const previousSettings = settings;
     setSettings((current) => ({ ...current, [key]: value }));
-    const next = await saveStoredSettings({ [key]: value });
-    if (settingsRevision.current === saveRevision) setSettings(next);
+    try {
+      const next = await saveStoredSettings({ [key]: value });
+      if (settingsRevision.current === saveRevision) setSettings(next);
+    } catch {
+      if (settingsRevision.current === saveRevision) {
+        try {
+          setSettings(await getStoredSettings());
+        } catch {
+          setSettings(previousSettings);
+        }
+      }
+    }
   };
 
   return (

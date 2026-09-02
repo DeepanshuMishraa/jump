@@ -22,6 +22,7 @@ export async function activateTab(tab: PaletteTab) {
 }
 
 export async function setTabPinned(tab: PaletteTab | PinnedTab, pinned: boolean) {
+  if ("id" in tab && !pinnedTabIdentity(tab.url)) return;
   const savedTab: PinnedTab = "id" in tab
     ? {
         tabId: tab.id,
@@ -43,7 +44,7 @@ export async function openUrl(url: string, openerTabId?: number) {
   await chrome.runtime.sendMessage({ type: "open-url", url, openerTabId } satisfies BrowserMessage);
 }
 
-export async function searchWeb(query: string, openerTabId?: number) {
-  await chrome.runtime.sendMessage({ type: "search-web", query, openerTabId } satisfies BrowserMessage);
+export async function searchWeb(query: string) {
+  await chrome.runtime.sendMessage({ type: "search-web", query } satisfies BrowserMessage);
 }
 

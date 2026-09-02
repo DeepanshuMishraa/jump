@@ -32,8 +32,8 @@ test("keeps pinned tabs above unpinned matches", () => {
   });
 
   assert.deepEqual(
-    searchTabs([tab(1, "Other", false), tab(2, "Match", true)], "match").map(({ id }) => id),
-    [2],
+    searchTabs([tab(1, "Match", false), tab(2, "Match", true)], "match").map(({ id }) => id),
+    [2, 1],
   );
 });
 

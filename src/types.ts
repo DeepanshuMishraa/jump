@@ -47,9 +47,9 @@ export type BrowserMessage =
   | { type: "search-history"; query: string; maxResults?: number }
   | { type: "activate-tab"; tab: PaletteTab }
   | { type: "open-url"; url: string; openerTabId?: number }
-  | { type: "search-web"; query: string; openerTabId?: number }
+  | { type: "search-web"; query: string }
   | { type: "open-shortcut-settings" }
-  | { type: "open-palette"; mode?: "search" | "switcher"; previewUrl?: string }
+  | { type: "open-palette"; mode?: "search" | "switcher"; previewUrl?: string; activeTabId?: number }
   | { type: "update-switcher-preview"; previewUrl: string }
   | { type: "cycle-tab-switcher"; direction?: "next" | "prev" }
   | { type: "request-pin-selected-tab" }

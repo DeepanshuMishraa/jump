@@ -176,6 +176,9 @@ function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
       ? { tabSwitchMode: value.tabSwitchMode }
       : {}),
     ...( "pinnedTabs" in value ? { pinnedTabs: parsePinnedTabs(value.pinnedTabs) } : {}),
+    ...( "pinnedTabIds" in value && Array.isArray(value.pinnedTabIds)
+      ? { pinnedTabs: parseLegacyPinnedTabs(value.pinnedTabIds) }
+      : {}),
   };
 }
 
@@ -238,6 +241,7 @@ export async function getStoredSettings(): Promise<UserSettings> {
         "theme",
         "disableMouseTabSwitcher",
         "disableMouseCommandPalette",
+        "tabSwitchMode",
         "pinnedTabs",
         "pinnedTabIds",
       ]));
