@@ -48,6 +48,7 @@ function openPalette(message: Extract<BrowserMessage, { type: "open-palette" }> 
       onClose={closePalette}
       initialMode={message.mode}
       previewUrl={message.previewUrl}
+      initialActiveTabId={message.activeTabId}
     />,
   );
 }

@@ -138,10 +138,12 @@ export function App({
   onClose,
   initialMode = "search",
   previewUrl,
+  initialActiveTabId,
 }: {
   onClose: () => void;
   initialMode?: "search" | "switcher";
   previewUrl?: string;
+  initialActiveTabId?: number;
 }) {
   const [tabs, setTabs] = useState<PaletteTab[]>([]);
   const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
@@ -156,6 +158,7 @@ export function App({
   const isGallery = settings.viewMode === "gallery";
   const [isExpanded, setIsExpanded] = useState(isSwitcher);
   const [selectedIndex, setSelectedIndex] = useState(isSwitcher ? 1 : 0);
+  const initialSwitcherSelectionPending = useRef(isSwitcher && initialActiveTabId !== undefined);
   const [isClosing, setIsClosing] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -206,8 +209,12 @@ export function App({
     try {
       const tabList = await getTabs();
       setTabs(tabList);
-      if (isSwitcher && tabList.length > 1) {
-        setSelectedIndex(1);
+      if (isSwitcher && initialSwitcherSelectionPending.current && tabList.length > 0) {
+        const activeIndex = initialActiveTabId === undefined
+          ? -1
+          : tabList.findIndex((tab) => tab.id === initialActiveTabId);
+        setSelectedIndex((activeIndex + 1 + tabList.length) % tabList.length);
+        initialSwitcherSelectionPending.current = false;
       }
     } catch {
       setTabs([]);
@@ -232,7 +239,7 @@ export function App({
         : [];
     events.forEach((event) => event.addListener(refresh));
     return () => events.forEach((event) => event.removeListener(refresh));
-  }, [refreshTabs, isSwitcher]);
+  }, [refreshTabs, isSwitcher, initialActiveTabId]);
 
   // Unified message listener for both in-page overlay and new tab page
   useEffect(() => {
@@ -246,8 +253,9 @@ export function App({
             setCurrentPreviewUrl(message.previewUrl);
           }
           setIsExpanded(true);
-          setSelectedIndex(() => {
+          setSelectedIndex((currentIndex) => {
             if (tabs.length === 0) return 0;
+            if (isSwitcher) return (currentIndex + 1) % tabs.length;
             const activeIndex = message.activeTabId === undefined
               ? -1
               : tabs.findIndex((tab) => tab.id === message.activeTabId);

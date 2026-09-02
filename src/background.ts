@@ -29,6 +29,12 @@ function invalidateHistoryCache() {
 }
 let pinUpdateQueue = Promise.resolve();
 
+function enqueuePinUpdate(update: () => Promise<void>) {
+  const operation = pinUpdateQueue.catch(() => undefined).then(update);
+  pinUpdateQueue = operation.catch(() => undefined);
+  return operation;
+}
+
 const previewCache = new Map<number, PreviewEntry>();
 
 function hostnameFor(url?: string) {
@@ -220,7 +226,23 @@ async function getTabs(): Promise<PaletteTab[]> {
     }];
   });
   if (JSON.stringify(pinnedTabs) !== JSON.stringify(settings.pinnedTabs)) {
-    void saveStoredSettings({ pinnedTabs });
+    void enqueuePinUpdate(async () => {
+      const latestSettings = await getStoredSettings();
+      const migratedTabs = latestSettings.pinnedTabs.flatMap((pinnedTab) => {
+        if (pinnedTab.identity) return [pinnedTab];
+        const matchingTab = browserTabs.find((tab) => tab.id === pinnedTab.tabId);
+        if (!matchingTab?.url) return [];
+        return [{
+          ...pinnedTab,
+          identity: pinnedTabIdentity(matchingTab.url),
+          url: matchingTab.url,
+          title: matchingTab.title?.trim() || pinnedTab.title,
+          hostname: hostnameFor(matchingTab.url),
+          ...(matchingTab.favIconUrl ? { faviconUrl: matchingTab.favIconUrl } : {}),
+        }];
+      });
+      await saveStoredSettings({ pinnedTabs: migratedTabs });
+    });
   }
   if (prunePreviewCache()) await writePreviewCache();
 
@@ -332,13 +354,13 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResp
   }
 
   if (message.type === "set-tab-pinned") {
-    pinUpdateQueue = pinUpdateQueue.then(async () => {
+    const operation = enqueuePinUpdate(async () => {
       const settings = await getStoredSettings();
       const pinnedTabs = settings.pinnedTabs.filter((tab) => tab.identity !== message.tab.identity);
       if (message.pinned) pinnedTabs.push(message.tab);
       await saveStoredSettings({ pinnedTabs });
     });
-    void pinUpdateQueue.then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
+    void operation.then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
     return true;
   }
 
