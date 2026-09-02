@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, setTabPinned, type BrowserHistoryItem } from "./browser";
-import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
+import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, MuteIcon, PinIcon, SearchIcon, SpeakerIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
@@ -26,6 +26,12 @@ function TabFavicon({ tab, size = 16 }: { tab: PaletteTab; size?: number }) {
       loading="eager"
     />
   );
+}
+
+function TabSoundIndicator({ tab, size = 14 }: { tab: PaletteTab; size?: number }) {
+  if (tab.muted) return <MuteIcon size={size} className="tab-audible-icon" />;
+  if (tab.audible) return <SpeakerIcon size={size} className="tab-audible-icon" />;
+  return null;
 }
 
 function SwitcherCard({
@@ -72,6 +78,7 @@ function SwitcherCard({
         <TabFavicon tab={tab} size={18} />
         <span className="switcher-card-title">{tab.title}</span>
         {tab.pinned && <PinIcon className="tab-pinned-icon" size={13} />}
+        <TabSoundIndicator tab={tab} />
       </div>
     </div>
   );
@@ -119,6 +126,7 @@ function GalleryCard({
           <TabFavicon tab={tab} size={15} />
           <span className="gallery-title">{tab.title}</span>
           {tab.pinned && <PinIcon className="tab-pinned-icon" size={12} />}
+          <TabSoundIndicator tab={tab} />
         </div>
         {tab.hostname && <span className="gallery-domain">{tab.hostname}</span>}
       </div>
@@ -622,14 +630,17 @@ export function App({
                         </div>
                       </div>
 
-                      {!tab.active || !tab.windowFocused ? (
-                        <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
-                          <span className="action-text">Switch to Tab</span>
-                          <span className="action-arrow-badge">
-                            <ArrowRightIcon size={12} />
-                          </span>
-                        </div>
-                      ) : null}
+                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <TabSoundIndicator tab={tab} size={16} />
+                        {!tab.active || !tab.windowFocused ? (
+                          <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
+                            <span className="action-text">Switch to Tab</span>
+                            <span className="action-arrow-badge">
+                              <ArrowRightIcon size={12} />
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 })

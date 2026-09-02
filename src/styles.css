@@ -280,6 +280,7 @@ button {
 .switcher-card {
   width: 250px;
   flex-shrink: 0;
+  align-self: center;
   padding: 10px 10px 12px;
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.015) 100%);
@@ -451,6 +452,7 @@ button {
 
 .search-lead-icon {
   flex-shrink: 0;
+  align-self: center;
   color: var(--text-muted);
   display: flex;
   align-items: center;
@@ -584,6 +586,7 @@ button {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  align-self: center;
 }
 
 .row-content {
@@ -622,6 +625,7 @@ button {
   text-overflow: ellipsis;
   white-space: nowrap;
   flex-shrink: 0;
+  align-self: center;
 }
 
 .list-row-action {
@@ -629,6 +633,7 @@ button {
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+  align-self: center;
   color: rgba(255, 255, 255, 0.35);
   font-size: 13px;
   font-weight: 500;
@@ -814,6 +819,7 @@ button {
   font-weight: 500;
   color: var(--text-muted);
   flex-shrink: 0;
+  align-self: center;
   letter-spacing: -0.01em;
 }
 
@@ -825,6 +831,7 @@ button {
   width: 18px;
   height: 18px;
   flex-shrink: 0;
+  align-self: center;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -965,6 +972,7 @@ kbd {
   display: grid;
   place-items: center;
   flex-shrink: 0;
+  align-self: center;
   border-radius: 8px;
   color: var(--text-primary);
   background: var(--bg-card);
@@ -1385,4 +1393,10 @@ kbd {
   .switcher-track {
     scroll-behavior: auto;
   }
+}
+
+.tab-audible-icon {
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--text-secondary);
 }

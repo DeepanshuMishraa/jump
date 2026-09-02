@@ -245,6 +245,8 @@ async function getTabs(): Promise<PaletteTab[]> {
           const liveIdMatch = browserTabs.some((candidate) => candidate.id === pinnedTab.tabId);
           return !liveIdMatch || pinnedTab.tabId === tab.id;
         }),
+        audible: Boolean(tab.audible),
+        muted: Boolean(tab.mutedInfo?.muted),
         lastAccessed: tab.lastAccessed,
       };
     })
