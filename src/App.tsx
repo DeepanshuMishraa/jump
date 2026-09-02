@@ -164,6 +164,7 @@ export function App({
   const listRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<SearchResult[]>([]);
+  const tabsRequestIdRef = useRef(0);
 
   // Load and subscribe to persistent settings
   useEffect(() => {
@@ -206,8 +207,11 @@ export function App({
   }, [onClose]);
 
   const refreshTabs = useCallback(async () => {
+    const requestId = tabsRequestIdRef.current + 1;
+    tabsRequestIdRef.current = requestId;
     try {
       const tabList = await getTabs();
+      if (requestId !== tabsRequestIdRef.current) return;
       setTabs(tabList);
       if (isSwitcher && initialSwitcherSelectionPending.current && tabList.length > 0) {
         const activeIndex = initialActiveTabId === undefined
@@ -217,16 +221,23 @@ export function App({
         initialSwitcherSelectionPending.current = false;
       }
     } catch {
-      setTabs([]);
+      if (requestId === tabsRequestIdRef.current) setTabs([]);
     }
-  }, [isSwitcher]);
+  }, [isSwitcher, initialActiveTabId]);
 
   useEffect(() => {
     if (!isSwitcher) {
       inputRef.current?.focus();
     }
     void refreshTabs();
-    const refresh = () => void refreshTabs();
+    let refreshTimer: number | undefined;
+    const scheduleRefresh = () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = undefined;
+        void refreshTabs();
+      }, 50);
+    };
     const events =
       chrome.tabs && chrome.windows
         ? [
@@ -237,8 +248,11 @@ export function App({
             chrome.windows.onFocusChanged,
           ]
         : [];
-    events.forEach((event) => event.addListener(refresh));
-    return () => events.forEach((event) => event.removeListener(refresh));
+    events.forEach((event) => event.addListener(scheduleRefresh));
+    return () => {
+      if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
+      events.forEach((event) => event.removeListener(scheduleRefresh));
+    };
   }, [refreshTabs, isSwitcher, initialActiveTabId]);
 
   // Unified message listener for both in-page overlay and new tab page
