@@ -28,6 +28,11 @@ function TabFavicon({ tab, size = 16 }: { tab: PaletteTab; size?: number }) {
   );
 }
 
+function TabSoundIndicator({ tab, size = 14 }: { tab: PaletteTab; size?: number }) {
+  if (tab.muted) return <MuteIcon size={size} className="tab-audible-icon" />;
+  if (tab.audible) return <SpeakerIcon size={size} className="tab-audible-icon" />;
+  return null;
+}
 function SwitcherCard({
   tab,
   isSelected,
@@ -71,7 +76,7 @@ function SwitcherCard({
       <div className="switcher-card-footer">
         <TabFavicon tab={tab} size={18} />
         <span className="switcher-card-title">{tab.title}</span>
-        {tab.muted ? <MuteIcon size={14} className="tab-audible-icon" /> : tab.audible ? <SpeakerIcon size={14} className="tab-audible-icon" /> : null}
+        <TabSoundIndicator tab={tab} />
       </div>
     </div>
   );
@@ -118,7 +123,7 @@ function GalleryCard({
         <div className="gallery-meta-left">
           <TabFavicon tab={tab} size={15} />
           <span className="gallery-title">{tab.title}</span>
-          {tab.muted ? <MuteIcon size={14} className="tab-audible-icon" /> : tab.audible ? <SpeakerIcon size={14} className="tab-audible-icon" /> : null}
+          <TabSoundIndicator tab={tab} />
         </div>
         {tab.hostname && <span className="gallery-domain">{tab.hostname}</span>}
       </div>
@@ -593,7 +598,7 @@ export function App({
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        {tab.muted ? <MuteIcon size={16} className="tab-audible-icon" /> : tab.audible ? <SpeakerIcon size={16} className="tab-audible-icon" /> : null}
+                        <TabSoundIndicator tab={tab} size={16} />
                         {!tab.active || !tab.windowFocused ? (
                           <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
                             <span className="action-text">Switch to Tab</span>
