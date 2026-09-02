@@ -1,11 +1,11 @@
-import type { ColorTheme, UserSettings, ViewMode } from "./types";
+import type { ColorTheme, PinnedTab, UserSettings, ViewMode } from "./types";
 
 export const DEFAULT_SETTINGS: UserSettings = {
   viewMode: "list",
   theme: "default",
   disableMouseTabSwitcher: false,
   disableMouseCommandPalette: false,
-  pinnedTabIds: [],
+  pinnedTabs: [],
 };
 
 export type ThemeInfo = {
@@ -88,10 +88,51 @@ function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean";
 }
 
-function parsePinnedTabIds(value: unknown) {
-  return Array.isArray(value)
-    ? value.filter((tabId): tabId is number => typeof tabId === "number" && Number.isInteger(tabId) && tabId > 0)
-    : [];
+function parsePinnedTabs(value: unknown): PinnedTab[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((tab): PinnedTab[] => {
+    if (typeof tab !== "object" || tab === null ||
+      !("tabId" in tab) || typeof tab.tabId !== "number" || !Number.isInteger(tab.tabId) || tab.tabId <= 0) {
+      return [];
+    }
+    const url = "url" in tab && typeof tab.url === "string" ? tab.url : "";
+    const identity = "identity" in tab && typeof tab.identity === "string" ? tab.identity : pinnedTabIdentity(url);
+    if (!identity) return [];
+    return [{
+      tabId: tab.tabId,
+      identity,
+      url: url || identity,
+      title: "title" in tab && typeof tab.title === "string" ? tab.title : url || identity,
+      hostname: "hostname" in tab && typeof tab.hostname === "string" ? tab.hostname : hostnameForPinnedTab(url || identity),
+      ...( "faviconUrl" in tab && typeof tab.faviconUrl === "string" ? { faviconUrl: tab.faviconUrl } : {}),
+    }];
+  });
+}
+
+function hostnameForPinnedTab(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+export function pinnedTabIdentity(url: string) {
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+function parseLegacyPinnedTabs(value: unknown): PinnedTab[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((tabId): tabId is number => typeof tabId === "number" && Number.isInteger(tabId) && tabId > 0)
+    .map((tabId) => ({ tabId, identity: "", url: "", title: "Pinned tab", hostname: "" }));
 }
 
 export function parseStoredSettings(value: unknown): UserSettings {
@@ -104,8 +145,12 @@ export function parseStoredSettings(value: unknown): UserSettings {
   const disableMouseCommandPalette = "disableMouseCommandPalette" in value && isBoolean(value.disableMouseCommandPalette)
     ? value.disableMouseCommandPalette
     : DEFAULT_SETTINGS.disableMouseCommandPalette;
-  const pinnedTabIds = "pinnedTabIds" in value ? parsePinnedTabIds(value.pinnedTabIds) : DEFAULT_SETTINGS.pinnedTabIds;
-  return { viewMode, theme, disableMouseTabSwitcher, disableMouseCommandPalette, pinnedTabIds };
+  const pinnedTabs = "pinnedTabs" in value
+    ? parsePinnedTabs(value.pinnedTabs)
+    : "pinnedTabIds" in value
+      ? parseLegacyPinnedTabs(value.pinnedTabIds)
+      : DEFAULT_SETTINGS.pinnedTabs;
+  return { viewMode, theme, disableMouseTabSwitcher, disableMouseCommandPalette, pinnedTabs };
 }
 
 function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
@@ -119,7 +164,7 @@ function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
     ...( "disableMouseCommandPalette" in value && isBoolean(value.disableMouseCommandPalette)
       ? { disableMouseCommandPalette: value.disableMouseCommandPalette }
       : {}),
-    ...( "pinnedTabIds" in value ? { pinnedTabIds: parsePinnedTabIds(value.pinnedTabIds) } : {}),
+    ...( "pinnedTabs" in value ? { pinnedTabs: parsePinnedTabs(value.pinnedTabs) } : {}),
   };
 }
 
@@ -155,6 +200,7 @@ async function readChromeLocalSettings() {
     "theme",
     "disableMouseTabSwitcher",
     "disableMouseCommandPalette",
+    "pinnedTabs",
     "pinnedTabIds",
   ]);
   return parseStoredSettings(stored);
@@ -180,6 +226,7 @@ export async function getStoredSettings(): Promise<UserSettings> {
         "theme",
         "disableMouseTabSwitcher",
         "disableMouseCommandPalette",
+        "pinnedTabs",
         "pinnedTabIds",
       ]));
       selectedBackend = "sync";

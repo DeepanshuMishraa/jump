@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { browserUrlFor, buildSearchResults, parseBang, searchTabs } from "../src/paletteSearch.ts";
-import type { PaletteTab } from "../src/types.ts";
+import type { PaletteTab, PinnedTab } from "../src/types.ts";
 
 test("parses supported bang searches", () => {
   assert.deepEqual(parseBang("!gh react hooks"), {
@@ -34,6 +34,43 @@ test("keeps pinned tabs above unpinned matches", () => {
     searchTabs([tab(1, "Other", false), tab(2, "Match", true)], "match").map(({ id }) => id),
     [2],
   );
+});
+
+test("includes browser history even when an open tab matches", () => {
+  const openTab: PaletteTab = {
+    id: 1,
+    windowId: 1,
+    title: "Example",
+    url: "https://example.com/",
+    hostname: "example.com",
+    active: false,
+    windowFocused: true,
+    pinned: false,
+  };
+  const visited = { id: "2", title: "Example docs", url: "https://docs.example.com/" };
+
+  assert.deepEqual(buildSearchResults([openTab], "example", [], [visited]), [
+    { kind: "tab", tab: openTab },
+    { kind: "search", query: "example" },
+    { kind: "visited", item: visited },
+  ]);
+});
+
+test("keeps closed pinned tabs in the palette", () => {
+  const pinnedTab: PinnedTab = {
+    tabId: 42,
+    identity: "https://example.com/",
+    url: "https://example.com/",
+    title: "Example",
+    hostname: "example.com",
+  };
+
+  assert.deepEqual(buildSearchResults([], "", [], [], [pinnedTab]), [
+    { kind: "pinned", tab: pinnedTab },
+  ]);
+  assert.deepEqual(buildSearchResults([], "missing", [], [], [pinnedTab]), [
+    { kind: "search", query: "missing" },
+  ]);
 });
 
 test("recognizes real URLs without treating dotted words as hosts", () => {

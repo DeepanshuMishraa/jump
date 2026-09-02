@@ -8,12 +8,21 @@ export type ColorTheme =
 
 export type ViewMode = "list" | "gallery";
 
+export type PinnedTab = {
+  tabId: number;
+  identity: string;
+  url: string;
+  title: string;
+  hostname: string;
+  faviconUrl?: string;
+};
+
 export type UserSettings = {
   viewMode: ViewMode;
   theme: ColorTheme;
   disableMouseTabSwitcher: boolean;
   disableMouseCommandPalette: boolean;
-  pinnedTabIds: number[];
+  pinnedTabs: PinnedTab[];
 };
 
 export type PaletteTab = {
@@ -41,7 +50,7 @@ export type BrowserMessage =
   | { type: "update-switcher-preview"; previewUrl: string }
   | { type: "cycle-tab-switcher"; direction?: "next" | "prev" }
   | { type: "request-pin-selected-tab" }
-  | { type: "set-tab-pinned"; tabId: number; pinned: boolean }
+  | { type: "set-tab-pinned"; tab: PinnedTab; pinned: boolean }
   | { type: "get-settings" }
   | { type: "save-settings"; settings: Partial<UserSettings> };
 

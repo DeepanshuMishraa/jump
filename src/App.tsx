@@ -4,7 +4,7 @@ import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, PinIcon, SearchIc
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
-import { DEFAULT_SETTINGS, getStoredSettings, subscribeToSettings } from "./settings";
+import { DEFAULT_SETTINGS, getStoredSettings, pinnedTabIdentity, subscribeToSettings } from "./settings";
 import type { BrowserMessage, PaletteTab, UserSettings } from "./types";
 
 function TabFavicon({ tab, size = 16 }: { tab: PaletteTab; size?: number }) {
@@ -152,12 +152,13 @@ export function App({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const resultsRef = useRef<SearchResult[]>([]);
 
   // Load and subscribe to persistent settings
   useEffect(() => {
     void getStoredSettings().then(setSettings);
-    void getSearchHistory().then(setHistory);
-    void getBrowserHistory("", 5).then(setRecentBrowserHistory).catch(() => {});
+    void getSearchHistory().then(setHistory).catch(() => setHistory([]));
+    void getBrowserHistory("", 8).then(setRecentBrowserHistory).catch(() => setRecentBrowserHistory([]));
     return subscribeToSettings(setSettings);
   }, []);
 
@@ -170,14 +171,19 @@ export function App({
     if (!trimmed) return;
 
     let cancelled = false;
-    void getBrowserHistory(trimmed).then((items) => {
-      if (!cancelled) {
-        const seen = new Set(localMatches.map((item) => item.id));
-        setBrowserHistory([...localMatches, ...items.filter((item) => !seen.has(item.id))]);
-      }
-    }).catch(() => {});
+    const timeout = window.setTimeout(() => {
+      void getBrowserHistory(trimmed, 8).then((items) => {
+        if (!cancelled) {
+          const seen = new Set(localMatches.map((item) => item.id));
+          setBrowserHistory([...localMatches, ...items.filter((item) => !seen.has(item.id))]);
+        }
+      }).catch(() => {
+        // Keep locally available history visible when Chrome history is unavailable.
+      });
+    }, 100);
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
     };
   }, [query, recentBrowserHistory]);
 
@@ -251,9 +257,11 @@ export function App({
             : (curr + 1) % tabs.length;
         });
       } else if (message.type === "request-pin-selected-tab") {
-        const selectedTab = tabs[selectedIndex];
-        if (selectedTab) {
-          void setTabPinned(selectedTab.id, !selectedTab.pinned).then(() => void refreshTabs());
+        const selectedResult = resultsRef.current[selectedIndex];
+        if (selectedResult?.kind === "tab") {
+          void setTabPinned(selectedResult.tab, !selectedResult.tab.pinned).then(() => void refreshTabs());
+        } else if (selectedResult?.kind === "pinned") {
+          void setTabPinned(selectedResult.tab, false);
         }
       }
     };
@@ -282,15 +290,15 @@ export function App({
     }
 
     const openerTabId = tabs.find((tab) => tab.active && tab.windowFocused)?.id;
-    if (result.kind === "visited") {
-      void openUrl(result.item.url, openerTabId);
+    if (result.kind === "visited" || result.kind === "pinned") {
+      void openUrl(result.kind === "visited" ? result.item.url : result.tab.url, openerTabId);
       handleClose();
       return;
     }
 
     const input = result.kind === "history" ? result.query : query;
     const action = result.kind === "history" ? buildSearchResults([], result.query)[0] : result;
-    if (!action || action.kind === "tab" || action.kind === "history" || action.kind === "visited") return;
+    if (!action || action.kind === "tab" || action.kind === "pinned" || action.kind === "history" || action.kind === "visited") return;
 
     void recordSearch(input).then(() => getSearchHistory().then(setHistory));
     if (action.kind === "url" || action.kind === "bang") void openUrl(action.url, openerTabId);
@@ -354,8 +362,16 @@ export function App({
     }
   }, [selectedIndex, isSwitcher]);
 
-  // Search open tabs, then offer one web-search action.
-  const results = useMemo(() => buildSearchResults(tabs, query, history, browserHistory), [query, tabs, history, browserHistory]);
+  // Keep saved pins visible even when their browser tab is closed.
+  const closedPinnedTabs = useMemo(() => {
+    const openIdentities = new Set(tabs.map((tab) => pinnedTabIdentity(tab.url)));
+    return settings.pinnedTabs.filter((tab) => !openIdentities.has(tab.identity));
+  }, [settings.pinnedTabs, tabs]);
+  const results = useMemo(
+    () => buildSearchResults(tabs, query, history, browserHistory, closedPinnedTabs),
+    [query, tabs, history, browserHistory, closedPinnedTabs],
+  );
+  resultsRef.current = results;
 
   // Adjust selected index bounds for search list
   useEffect(() => {

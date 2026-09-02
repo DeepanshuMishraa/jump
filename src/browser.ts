@@ -1,4 +1,5 @@
-import type { BrowserMessage, PaletteTab } from "./types";
+import { pinnedTabIdentity } from "./settings";
+import type { BrowserMessage, PaletteTab, PinnedTab } from "./types";
 
 export type BrowserHistoryItem = {
   id: string;
@@ -20,8 +21,18 @@ export async function activateTab(tab: PaletteTab) {
   await chrome.runtime.sendMessage({ type: "activate-tab", tab } satisfies BrowserMessage);
 }
 
-export async function setTabPinned(tabId: number, pinned: boolean) {
-  await chrome.runtime.sendMessage({ type: "set-tab-pinned", tabId, pinned } satisfies BrowserMessage);
+export async function setTabPinned(tab: PaletteTab | PinnedTab, pinned: boolean) {
+  const savedTab: PinnedTab = "id" in tab
+    ? {
+        tabId: tab.id,
+        identity: pinnedTabIdentity(tab.url),
+        url: tab.url,
+        title: tab.title,
+        hostname: tab.hostname,
+        ...(tab.faviconUrl ? { faviconUrl: tab.faviconUrl } : {}),
+      }
+    : tab;
+  await chrome.runtime.sendMessage({ type: "set-tab-pinned", tab: savedTab, pinned } satisfies BrowserMessage);
 }
 
 export async function openShortcutSettings() {

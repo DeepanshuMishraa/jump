@@ -1,4 +1,4 @@
-import { getStoredSettings, saveStoredSettings } from "./settings";
+import { getStoredSettings, pinnedTabIdentity, saveStoredSettings } from "./settings";
 import type { BrowserMessage, PaletteTab } from "./types";
 
 type PreviewEntry = {
@@ -12,6 +12,18 @@ const PREVIEW_CACHE_KEY = "recent-tab-previews";
 const PREVIEW_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_PREVIEW_COUNT = 24;
 const MAX_PREVIEW_CHARACTERS = 9_000_000;
+const HISTORY_CACHE_LIMIT = 100;
+
+type HistoryResult = {
+  id: string;
+  url: string;
+  title: string;
+  faviconUrl?: string;
+  lastVisitTime?: number;
+};
+
+const historyCache = new Map<string, HistoryResult[]>();
+const historyRequests = new Map<string, Promise<HistoryResult[]>>();
 
 const previewCache = new Map<number, PreviewEntry>();
 
@@ -145,6 +157,43 @@ async function sendToTab(tab: chrome.tabs.Tab, message: BrowserMessage) {
   }
 }
 
+function searchHistory(query: string, maxResults: number) {
+  const key = query.trim().toLowerCase();
+  const cached = historyCache.get(key);
+  if (cached) return Promise.resolve(cached.slice(0, maxResults));
+
+  const allHistory = historyCache.get("");
+  if (allHistory) {
+    const matching = allHistory.filter((item) =>
+      `${item.title} ${item.url}`.toLowerCase().includes(key),
+    );
+    return Promise.resolve(matching.slice(0, maxResults));
+  }
+
+  const activeRequest = historyRequests.get(key);
+  if (activeRequest) return activeRequest.then((items) => items.slice(0, maxResults));
+
+  const request = chrome.history.search({ text: key, maxResults: HISTORY_CACHE_LIMIT })
+    .then((items) => items
+      .filter((item): item is chrome.history.HistoryItem & { id: string; url: string } =>
+        typeof item.id === "string" && typeof item.url === "string" && item.url !== ""
+      )
+      .map((item) => ({
+        id: item.id,
+        url: item.url,
+        title: item.title?.trim() || item.url,
+        faviconUrl: "faviconUrl" in item && typeof item.faviconUrl === "string" ? item.faviconUrl : undefined,
+        lastVisitTime: item.lastVisitTime,
+      }))
+    );
+  historyRequests.set(key, request);
+  void request.then((items) => {
+    historyCache.set(key, items);
+    historyRequests.delete(key);
+  }, () => historyRequests.delete(key));
+  return request.then((items) => items.slice(0, maxResults));
+}
+
 async function sendToActiveTab(message: BrowserMessage) {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (tab) await sendToTab(tab, message);
@@ -157,13 +206,31 @@ async function getTabs(): Promise<PaletteTab[]> {
     getStoredSettings(),
     previewCacheReady,
   ]);
-  const pinnedTabIds = new Set(settings.pinnedTabIds);
+  const browserTabs = tabs.filter(
+    (tab): tab is chrome.tabs.Tab & { id: number; windowId: number } => tab.id !== undefined,
+  );
+  const pinnedTabs = settings.pinnedTabs.map((pinnedTab) => {
+    const matchingTab = browserTabs.find((tab) =>
+      tab.id === pinnedTab.tabId || pinnedTabIdentity(tab.url || "") === pinnedTab.identity,
+    );
+    if (!matchingTab) return pinnedTab;
+    return {
+      tabId: matchingTab.id,
+      identity: pinnedTabIdentity(matchingTab.url || ""),
+      url: matchingTab.url || pinnedTab.url,
+      title: matchingTab.title?.trim() || pinnedTab.title,
+      hostname: hostnameFor(matchingTab.url) || pinnedTab.hostname,
+      ...(matchingTab.favIconUrl ? { faviconUrl: matchingTab.favIconUrl } : {}),
+    };
+  });
+  if (JSON.stringify(pinnedTabs) !== JSON.stringify(settings.pinnedTabs)) {
+    void saveStoredSettings({ pinnedTabs });
+  }
   if (prunePreviewCache()) await writePreviewCache();
 
   const focusedWindows = new Set(windows.filter((window) => window.focused).map((window) => window.id));
 
-  return tabs
-    .filter((tab): tab is chrome.tabs.Tab & { id: number; windowId: number } => tab.id !== undefined)
+  return browserTabs
     .map((tab) => {
       const preview = previewCache.get(tab.id);
       return {
@@ -176,7 +243,8 @@ async function getTabs(): Promise<PaletteTab[]> {
         previewUrl: preview && preview.url === tab.url ? preview.dataUrl : undefined,
         active: Boolean(tab.active),
         windowFocused: focusedWindows.has(tab.windowId),
-        pinned: pinnedTabIds.has(tab.id),
+        pinned: pinnedTabs.some((pinnedTab) => pinnedTab.tabId === tab.id ||
+          (pinnedTab.identity !== "" && pinnedTab.identity === pinnedTabIdentity(tab.url || ""))),
         lastAccessed: tab.lastAccessed,
       };
     })
@@ -241,20 +309,7 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResp
   }
 
   if (message.type === "search-history") {
-    void chrome.history.search({ text: message.query, maxResults: Math.min(message.maxResults ?? 8, 5) })
-      .then((items) => items
-        .filter((item): item is chrome.history.HistoryItem & { id: string; url: string } =>
-          typeof item.id === "string" && typeof item.url === "string" && item.url !== ""
-        )
-        .map((item) => ({
-          id: item.id,
-          url: item.url,
-          title: item.title?.trim() || item.url,
-          faviconUrl: "faviconUrl" in item && typeof item.faviconUrl === "string" ? item.faviconUrl : undefined,
-          lastVisitTime: item.lastVisitTime,
-        }))
-      )
-      .then(sendResponse);
+    void searchHistory(message.query, Math.min(message.maxResults ?? 8, 8)).then(sendResponse);
     return true;
   }
 
@@ -268,10 +323,11 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResp
   if (message.type === "set-tab-pinned") {
     void getStoredSettings()
       .then((settings) => {
-        const pinnedTabIds = new Set(settings.pinnedTabIds);
-        if (message.pinned) pinnedTabIds.add(message.tabId);
-        else pinnedTabIds.delete(message.tabId);
-        return saveStoredSettings({ pinnedTabIds: [...pinnedTabIds] });
+        const pinnedTabs = settings.pinnedTabs.filter((tab) =>
+          tab.tabId !== message.tab.tabId && tab.identity !== message.tab.identity,
+        );
+        if (message.pinned) pinnedTabs.push(message.tab);
+        return saveStoredSettings({ pinnedTabs });
       })
       .then(() => sendResponse({ ok: true }));
     return true;

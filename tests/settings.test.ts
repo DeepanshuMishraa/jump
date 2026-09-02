@@ -65,8 +65,18 @@ test("persisted settings validate fields independently", () => {
     DEFAULT_SETTINGS,
   );
   assert.deepEqual(
-    parseStoredSettings({ disableMouseTabSwitcher: true, disableMouseCommandPalette: "yes", pinnedTabIds: [12, "bad", 0] }),
-    { ...DEFAULT_SETTINGS, disableMouseTabSwitcher: true, pinnedTabIds: [12] },
+    parseStoredSettings({ disableMouseTabSwitcher: true, disableMouseCommandPalette: "yes", pinnedTabs: [{ tabId: 12, url: "https://example.com" }, { tabId: 0, url: "bad" }] }),
+    {
+      ...DEFAULT_SETTINGS,
+      disableMouseTabSwitcher: true,
+      pinnedTabs: [{
+        tabId: 12,
+        identity: "https://example.com/",
+        url: "https://example.com",
+        title: "https://example.com",
+        hostname: "example.com",
+      }],
+    },
   );
 });
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRightIcon, GlobeIcon, SearchIcon } from "./icons";
+import { ArrowRightIcon, GlobeIcon, PinIcon, SearchIcon } from "./icons";
 import type { SearchResult } from "./paletteSearch";
 
 function historyHostname(url: string) {
@@ -8,6 +8,13 @@ function historyHostname(url: string) {
   } catch {
     return url;
   }
+}
+
+function PinnedFavicon({ result }: { result: Extract<SearchResult, { kind: "pinned" }> }) {
+  const [failed, setFailed] = useState(false);
+  const source = result.tab.faviconUrl || `chrome://favicon/size/32@1x/${encodeURIComponent(result.tab.url)}`;
+  if (failed) return <GlobeIcon size={16} />;
+  return <img className="item-icon tab-favicon" src={source} alt="" onError={() => setFailed(true)} />;
 }
 
 function HistoryFavicon({ result }: { result: Extract<SearchResult, { kind: "visited" }> }) {
@@ -56,15 +63,18 @@ export function PaletteAction({
   const isUrl = result.kind === "url";
   const isHistory = result.kind === "history";
   const isVisited = result.kind === "visited";
-  const title = isBang || isUrl || isHistory
-    ? (isBang || isHistory ? result.query : result.url)
-    : isVisited ? result.item.title : result.query;
-  const domain = isBang ? `${result.label} (!${result.bang})`
+  const isPinned = result.kind === "pinned";
+  const title = isPinned ? result.tab.title
+    : isBang || isUrl || isHistory
+      ? (isBang || isHistory ? result.query : result.url)
+      : isVisited ? result.item.title : result.query;
+  const domain = isPinned ? result.tab.hostname || historyHostname(result.tab.url)
+    : isBang ? `${result.label} (!${result.bang})`
     : isUrl ? "Open URL"
     : isHistory ? "Recent search"
     : isVisited ? historyHostname(result.item.url)
     : "Search on Web";
-  const actionLabel = isBang || isUrl || isVisited ? "Open" : isHistory ? "Search again" : "Search";
+  const actionLabel = isPinned || isBang || isUrl || isVisited ? "Open" : isHistory ? "Search again" : "Search";
 
   return (
     <div
@@ -76,11 +86,20 @@ export function PaletteAction({
       onClick={onClick}
     >
       <div className="list-row-left">
-        <span className="action-icon-badge">
-          {isBang || isUrl ? <GlobeIcon size={16} /> : isVisited ? <HistoryFavicon result={result} /> : <SearchIcon size={16} />}
-        </span>
+        {isPinned ? (
+          <span className="tab-favicon-wrapper">
+            <PinnedFavicon result={result} />
+          </span>
+        ) : (
+          <span className="action-icon-badge">
+            {isBang || isUrl ? <GlobeIcon size={16} />
+              : isVisited ? <HistoryFavicon result={result} />
+              : <SearchIcon size={16} />}
+          </span>
+        )}
         <div className="row-content">
           <span className="row-title">{title}</span>
+          {isPinned && <PinIcon className="tab-pinned-icon" size={12} />}
           <span className="row-domain">— {domain}</span>
         </div>
       </div>
