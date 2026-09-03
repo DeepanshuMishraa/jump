@@ -52,12 +52,14 @@ export function PaletteAction({
   isSelected,
   onClick,
   onMouseEnter,
+  onAutocomplete,
 }: {
   result: Exclude<SearchResult, { kind: "tab" }>;
   index: number;
   isSelected: boolean;
   onClick?: () => void;
   onMouseEnter?: () => void;
+  onAutocomplete?: () => void;
 }) {
   const isBang = result.kind === "bang";
   const isUrl = result.kind === "url";
@@ -75,6 +77,7 @@ export function PaletteAction({
     : isVisited ? historyHostname(result.item.url)
     : "Search on Web";
   const actionLabel = isPinned || isBang || isUrl || isVisited ? "Open" : isHistory ? "Search again" : "Search";
+  const canAutocomplete = isPinned || isHistory;
 
   return (
     <div
@@ -104,12 +107,26 @@ export function PaletteAction({
         </div>
       </div>
 
-      <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
-        <span className="action-text">{actionLabel}</span>
-        <span className="action-arrow-badge">
-          <ArrowRightIcon size={12} />
-        </span>
-      </div>
+      {canAutocomplete ? (
+        <button
+          type="button"
+          className={`list-row-action ${isSelected ? "selected" : ""}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onAutocomplete?.();
+          }}
+          aria-label={`Complete ${title}`}
+          title="Complete in search field"
+        >
+          <span className="action-text">{actionLabel}</span>
+          <span className="action-arrow-badge"><ArrowRightIcon size={12} /></span>
+        </button>
+      ) : (
+        <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
+          <span className="action-text">{actionLabel}</span>
+          <span className="action-arrow-badge"><ArrowRightIcon size={12} /></span>
+        </div>
+      )}
     </div>
   );
 }

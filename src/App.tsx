@@ -81,6 +81,16 @@ export function App({
     }, 100);
   }, [recentBrowserHistory]);
 
+  const autocompleteResult = useCallback((result: SearchResult) => {
+    const value = result.kind === "history" ? result.query : result.kind === "pinned" ? result.tab.url : undefined;
+    if (value === undefined) return;
+    handleQueryChange(value);
+    inputRef.current?.focus();
+    window.setTimeout(() => {
+      inputRef.current?.setSelectionRange(value.length, value.length);
+    }, 0);
+  }, [handleQueryChange]);
+
   const handleClose = useCallback(() => {
     setIsClosing(true);
     setTimeout(() => {
@@ -467,6 +477,7 @@ export function App({
                     isSelected={index === selectedIndex}
                     onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
                     onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
+                    onAutocomplete={() => autocompleteResult(result)}
                   />
                 ))
               ) : (
@@ -481,6 +492,7 @@ export function App({
                         isSelected={isSelected}
                         onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
                         onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
+                        onAutocomplete={() => autocompleteResult(result)}
                       />
                     );
                   }
