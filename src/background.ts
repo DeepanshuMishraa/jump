@@ -153,17 +153,8 @@ async function sendToTab(tab: chrome.tabs.Tab, message: BrowserMessage) {
   try {
     await chrome.tabs.sendMessage(tab.id, message);
   } catch {
-    if (tab.url && !tab.url.startsWith("chrome://") && !tab.url.startsWith("edge://") && !tab.url.startsWith("about:")) {
-      try {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ["assets/content.js"],
-        });
-        await chrome.tabs.sendMessage(tab.id, message);
-      } catch {
-        // Browser-owned and otherwise restricted pages cannot host the palette.
-      }
-    }
+    // Content scripts run declaratively on regular web pages. Browser-owned
+    // pages and tabs opened before an extension reload cannot host the palette.
   }
 }
 

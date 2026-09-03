@@ -9,7 +9,14 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["tabs", "windows", "scripting", "activeTab", "storage", "search", "history"],
+  "permissions": ["tabs", "windows", "storage", "search", "history"],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["assets/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "background": {
     "service_worker": "assets/background.js",
     "type": "module"
