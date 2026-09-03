@@ -1175,6 +1175,39 @@ kbd {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
+/* ponytail: fixed amber for the dark themes; light themes override below */
+.popup-shortcut-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.1);
+  color: #fbbf24;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.popup-shortcut-warning button {
+  margin-left: auto;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.popup-key-group kbd.popup-key-unset {
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
 .popup-footer-bar {
   padding: 4px 12px 10px;
 }
@@ -1299,6 +1332,12 @@ kbd {
 
 /* Default theme follows the browser's light appearance. */
 @media (prefers-color-scheme: light) {
+  .popup-shortcut-warning {
+    border-color: rgba(180, 83, 9, 0.35);
+    background: rgba(180, 83, 9, 0.08);
+    color: #92400e;
+  }
+
   .palette-backdrop[data-theme="default"] {
     background: rgba(255, 255, 255, 0.42);
   }
