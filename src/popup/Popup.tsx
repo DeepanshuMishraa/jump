@@ -42,6 +42,9 @@ export function Popup() {
       });
       setShortcuts(currentShortcuts);
       setShortcutsLoaded(true);
+    }).catch(() => {
+      // Commands API unavailable: keep manifest defaults and no warning,
+      // since we cannot verify which keys are actually assigned.
     });
   });
 
@@ -142,7 +145,7 @@ export function Popup() {
       <section className="popup-shortcuts" aria-label="Keyboard shortcuts">
         {shortcutsLoaded && unsetCommands.length > 0 && (
           <p className="popup-shortcut-warning" role="alert">
-            <InfoIcon size={14} aria-hidden="true" />
+            <InfoIcon size={14} />
             <span>
               {unsetCommands.length === 1
                 ? "Shortcut not assigned: "
