@@ -106,9 +106,7 @@ export function PaletteAction({
 
       <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
         <span className="action-text">{actionLabel}</span>
-        <span className="action-arrow-badge">
-          <ArrowRightIcon size={12} />
-        </span>
+        <span className="action-arrow-badge"><ArrowRightIcon size={12} /></span>
       </div>
     </div>
   );

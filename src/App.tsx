@@ -1,138 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, setTabPinned, type BrowserHistoryItem } from "./browser";
-import { ArrowRightIcon, ChevronDownIcon, GlobeIcon, InfoIcon, MuteIcon, PinIcon, SearchIcon, SpeakerIcon, XIcon } from "./icons";
+import { ArrowRightIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
 import { DEFAULT_SETTINGS, getStoredSettings, pinnedTabIdentity, subscribeToSettings } from "./settings";
+import { useMountEffect } from "./hooks/useMountEffect";
+import { TabFavicon, TabSoundIndicator } from "./components/TabVisuals";
+import { GalleryCard, SwitcherCard } from "./components/TabCards";
 import type { BrowserMessage, PaletteTab, UserSettings } from "./types";
-
-function TabFavicon({ tab, size = 16 }: { tab: PaletteTab; size?: number }) {
-  const [failed, setFailed] = useState(false);
-  if (!tab.faviconUrl || failed) {
-    return (
-      <span className="item-icon fallback-favicon" style={{ width: size, height: size }} aria-hidden="true">
-        <GlobeIcon size={Math.round(size * 0.75)} />
-      </span>
-    );
-  }
-  return (
-    <img
-      className="item-icon tab-favicon"
-      style={{ width: size, height: size }}
-      src={tab.faviconUrl}
-      alt=""
-      onError={() => setFailed(true)}
-      loading="eager"
-    />
-  );
-}
-
-function TabSoundIndicator({ tab, size = 14 }: { tab: PaletteTab; size?: number }) {
-  if (tab.muted) return <MuteIcon size={size} className="tab-audible-icon" />;
-  if (tab.audible) return <SpeakerIcon size={size} className="tab-audible-icon" />;
-  return null;
-}
-
-function SwitcherCard({
-  tab,
-  isSelected,
-  previewUrl,
-  index,
-  onClick,
-  onMouseEnter,
-}: {
-  tab: PaletteTab;
-  isSelected: boolean;
-  previewUrl?: string;
-  index: number;
-  onClick?: () => void;
-  onMouseEnter?: () => void;
-}) {
-  const effectivePreview = tab.previewUrl || (tab.active && tab.windowFocused ? previewUrl : undefined);
-
-  return (
-    <div
-      data-switcher-index={index}
-      className={`switcher-card ${isSelected ? "is-selected" : ""}`}
-      onClick={onClick}
-      onMouseEnter={onMouseEnter}
-      role="option"
-      aria-selected={isSelected}
-    >
-      <div className="switcher-thumbnail">
-        {effectivePreview ? (
-          <img src={effectivePreview} alt="" className="switcher-thumbnail-image" loading="eager" />
-        ) : (
-          <div className="switcher-placeholder">
-            <div className="switcher-placeholder-icon">
-              <TabFavicon tab={tab} size={32} />
-            </div>
-            <span className="switcher-placeholder-domain">{tab.hostname || "Web Page"}</span>
-          </div>
-        )}
-        <div className="switcher-thumbnail-glass" />
-      </div>
-
-      <div className="switcher-card-footer">
-        <TabFavicon tab={tab} size={18} />
-        <span className="switcher-card-title">{tab.title}</span>
-        {tab.pinned && <PinIcon className="tab-pinned-icon" size={13} />}
-        <TabSoundIndicator tab={tab} />
-      </div>
-    </div>
-  );
-}
-
-function GalleryCard({
-  tab,
-  index,
-  isSelected,
-  previewUrl,
-  onClick,
-  onMouseEnter,
-}: {
-  tab: PaletteTab;
-  index: number;
-  isSelected: boolean;
-  previewUrl?: string;
-  onClick?: () => void;
-  onMouseEnter?: () => void;
-}) {
-  const effectivePreview = tab.previewUrl || (tab.active && tab.windowFocused ? previewUrl : undefined);
-
-  return (
-    <div
-      data-index={index}
-      className={`gallery-card ${isSelected ? "selected" : ""}`}
-      onClick={onClick}
-      onMouseEnter={onMouseEnter}
-      role="option"
-      aria-selected={isSelected}
-    >
-      <div className="gallery-thumbnail">
-        {effectivePreview ? (
-          <img src={effectivePreview} alt="" className="gallery-thumbnail-image" loading="eager" />
-        ) : (
-          <div className="gallery-placeholder">
-            <TabFavicon tab={tab} size={28} />
-            <span className="gallery-placeholder-domain">{tab.hostname || "Web Page"}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="gallery-meta">
-        <div className="gallery-meta-left">
-          <TabFavicon tab={tab} size={15} />
-          <span className="gallery-title">{tab.title}</span>
-          {tab.pinned && <PinIcon className="tab-pinned-icon" size={12} />}
-          <TabSoundIndicator tab={tab} />
-        </div>
-        {tab.hostname && <span className="gallery-domain">{tab.hostname}</span>}
-      </div>
-    </div>
-  );
-}
 
 export function App({
   onClose,
@@ -164,40 +40,55 @@ export function App({
   const listRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<SearchResult[]>([]);
+  const tabsRef = useRef(tabs);
+  const modeRef = useRef(mode);
+  const selectedIndexRef = useRef(selectedIndex);
+  const refreshTabsRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const switchTabRef = useRef<(targetTab?: PaletteTab) => Promise<void>>(() => Promise.resolve());
+  const handleCloseRef = useRef<() => void>(() => undefined);
+  tabsRef.current = tabs;
+  modeRef.current = mode;
+  selectedIndexRef.current = selectedIndex;
   const tabsRequestIdRef = useRef(0);
 
   // Load and subscribe to persistent settings
-  useEffect(() => {
+  useMountEffect(() => {
     void getStoredSettings().then(setSettings);
     void getSearchHistory().then(setHistory).catch(() => setHistory([]));
     void getBrowserHistory("", 8).then(setRecentBrowserHistory).catch(() => setRecentBrowserHistory([]));
     return subscribeToSettings(setSettings);
-  }, []);
+  });
 
-  useEffect(() => {
-    const trimmed = query.trim().toLowerCase();
+  const historySearchTimerRef = useRef<number | undefined>(undefined);
+  const historyRequestIdRef = useRef(0);
+  const handleQueryChange = useCallback((value: string) => {
+    const requestId = historyRequestIdRef.current + 1;
+    historyRequestIdRef.current = requestId;
+    setQuery(value);
+    setSelectedIndex(0);
+    setIsExpanded(Boolean(value.trim()));
+    if (historySearchTimerRef.current !== undefined) window.clearTimeout(historySearchTimerRef.current);
+    const trimmed = value.trim().toLowerCase();
     const localMatches = trimmed
       ? recentBrowserHistory.filter((item) => `${item.title} ${item.url}`.toLowerCase().includes(trimmed))
       : [];
     setBrowserHistory(localMatches);
     if (!trimmed) return;
-
-    let cancelled = false;
-    const timeout = window.setTimeout(() => {
+    historySearchTimerRef.current = window.setTimeout(() => {
       void getBrowserHistory(trimmed, 8).then((items) => {
-        if (!cancelled) {
-          const seen = new Set(localMatches.map((item) => item.id));
-          setBrowserHistory([...localMatches, ...items.filter((item) => !seen.has(item.id))]);
-        }
+        if (historyRequestIdRef.current !== requestId) return;
+        const seen = new Set(localMatches.map((item) => item.id));
+        setBrowserHistory([...localMatches, ...items.filter((item) => !seen.has(item.id))]);
       }).catch(() => {
         // Keep locally available history visible when Chrome history is unavailable.
       });
     }, 100);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timeout);
-    };
-  }, [query, recentBrowserHistory]);
+  }, [recentBrowserHistory]);
+
+  useMountEffect(() => () => {
+    historyRequestIdRef.current += 1;
+    if (historySearchTimerRef.current !== undefined) window.clearTimeout(historySearchTimerRef.current);
+  });
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -205,6 +96,7 @@ export function App({
       onClose();
     }, 130);
   }, [onClose]);
+  handleCloseRef.current = handleClose;
 
   const refreshTabs = useCallback(async () => {
     const requestId = tabsRequestIdRef.current + 1;
@@ -224,18 +116,17 @@ export function App({
       if (requestId === tabsRequestIdRef.current) setTabs([]);
     }
   }, [isSwitcher, initialActiveTabId]);
+  refreshTabsRef.current = refreshTabs;
 
-  useEffect(() => {
-    if (!isSwitcher) {
-      inputRef.current?.focus();
-    }
-    void refreshTabs();
+  useMountEffect(() => {
+    if (modeRef.current !== "switcher") inputRef.current?.focus();
+    void refreshTabsRef.current();
     let refreshTimer: number | undefined;
     const scheduleRefresh = () => {
       if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
       refreshTimer = window.setTimeout(() => {
         refreshTimer = undefined;
-        void refreshTabs();
+        void refreshTabsRef.current();
       }, 50);
     };
     const events =
@@ -253,10 +144,10 @@ export function App({
       if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
       events.forEach((event) => event.removeListener(scheduleRefresh));
     };
-  }, [refreshTabs, isSwitcher, initialActiveTabId]);
+  });
 
   // Unified message listener for both in-page overlay and new tab page
-  useEffect(() => {
+  useMountEffect(() => {
     const handleMessage = (message: BrowserMessage) => {
       if (message.type === "update-switcher-preview") {
         setCurrentPreviewUrl(message.previewUrl);
@@ -268,33 +159,37 @@ export function App({
           }
           setIsExpanded(true);
           setSelectedIndex((currentIndex) => {
-            if (tabs.length === 0) return 0;
-            if (isSwitcher) return (currentIndex + 1) % tabs.length;
+            const currentTabs = tabsRef.current;
+            if (currentTabs.length === 0) return 0;
+            if (modeRef.current === "switcher") return (currentIndex + 1) % currentTabs.length;
             const activeIndex = message.activeTabId === undefined
               ? -1
-              : tabs.findIndex((tab) => tab.id === message.activeTabId);
-            return (activeIndex + 1 + tabs.length) % tabs.length;
+              : currentTabs.findIndex((tab) => tab.id === message.activeTabId);
+            return (activeIndex + 1 + currentTabs.length) % currentTabs.length;
           });
         } else {
           setMode("search");
           if (message.previewUrl !== undefined) setCurrentPreviewUrl(message.previewUrl);
           setIsExpanded(false);
-          setQuery("");
+          handleQueryChange("");
           setTimeout(() => inputRef.current?.focus(), 50);
         }
       } else if (message.type === "cycle-tab-switcher") {
         setSelectedIndex((curr) => {
-          if (tabs.length === 0) return 0;
+          const currentTabs = tabsRef.current;
+          if (currentTabs.length === 0) return 0;
           return message.direction === "prev"
-            ? (curr - 1 + tabs.length) % tabs.length
-            : (curr + 1) % tabs.length;
+            ? (curr - 1 + currentTabs.length) % currentTabs.length
+            : (curr + 1) % currentTabs.length;
         });
       } else if (message.type === "request-pin-selected-tab") {
-        const selectedResult = isSwitcher
-          ? (tabs[selectedIndex] ? { kind: "tab" as const, tab: tabs[selectedIndex] } : undefined)
-          : resultsRef.current[selectedIndex];
+        const currentTabs = tabsRef.current;
+        const currentIndex = selectedIndexRef.current;
+        const selectedResult = modeRef.current === "switcher"
+          ? (currentTabs[currentIndex] ? { kind: "tab" as const, tab: currentTabs[currentIndex] } : undefined)
+          : resultsRef.current[currentIndex];
         if (selectedResult?.kind === "tab") {
-          void setTabPinned(selectedResult.tab, !selectedResult.tab.pinned).then(() => void refreshTabs());
+          void setTabPinned(selectedResult.tab, !selectedResult.tab.pinned).then(() => void refreshTabsRef.current());
         } else if (selectedResult?.kind === "pinned") {
           void setTabPinned(selectedResult.tab, false);
         }
@@ -305,7 +200,7 @@ export function App({
       chrome.runtime.onMessage.addListener(handleMessage);
       return () => chrome.runtime.onMessage.removeListener(handleMessage);
     }
-  }, [tabs, selectedIndex, refreshTabs, isSwitcher]);
+  });
 
   // Switch to selected tab
   const switchTab = useCallback(
@@ -316,6 +211,7 @@ export function App({
     },
     [handleClose]
   );
+  switchTabRef.current = switchTab;
 
   const executeResult = useCallback((result?: SearchResult) => {
     if (!result) return;
@@ -342,40 +238,43 @@ export function App({
   }, [handleClose, switchTab, query, tabs]);
 
   // Global keyup/keydown handler for releasing Alt key and cycling in switcher mode
-  useEffect(() => {
-    if (!isSwitcher) return;
-
+  useMountEffect(() => {
     const handleWindowKeyUp = (event: globalThis.KeyboardEvent) => {
+      if (modeRef.current !== "switcher") return;
       if (event.key === "Alt" || !event.altKey) {
-        if (tabs.length > 0 && selectedIndex < tabs.length) {
-          void switchTab(tabs[selectedIndex]);
+        const currentTabs = tabsRef.current;
+        const currentIndex = selectedIndexRef.current;
+        if (currentTabs.length > 0 && currentIndex < currentTabs.length) {
+          void switchTabRef.current(currentTabs[currentIndex]);
         } else {
-          handleClose();
+          handleCloseRef.current();
         }
       }
     };
 
     const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (modeRef.current !== "switcher") return;
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        handleClose();
+        handleCloseRef.current();
         return;
       }
 
-      if (event.key === "ArrowRight" || event.key === "Tab") {
+      if (event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey)) {
         event.preventDefault();
         event.stopPropagation();
-        setSelectedIndex((curr) => (tabs.length ? (curr + 1) % tabs.length : 0));
-      } else if (event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey)) {
+        setSelectedIndex((curr) => (tabsRef.current.length ? (curr - 1 + tabsRef.current.length) % tabsRef.current.length : 0));
+      } else if (event.key === "ArrowRight" || event.key === "Tab") {
         event.preventDefault();
         event.stopPropagation();
-        setSelectedIndex((curr) => (tabs.length ? (curr - 1 + tabs.length) % tabs.length : 0));
+        setSelectedIndex((curr) => (tabsRef.current.length ? (curr + 1) % tabsRef.current.length : 0));
       } else if (event.key === "Enter") {
         event.preventDefault();
         event.stopPropagation();
-        if (tabs[selectedIndex]) {
-          void switchTab(tabs[selectedIndex]);
+        const currentTab = tabsRef.current[selectedIndexRef.current];
+        if (currentTab) {
+          void switchTabRef.current(currentTab);
         }
       }
     };
@@ -386,16 +285,7 @@ export function App({
       window.removeEventListener("keyup", handleWindowKeyUp, { capture: true });
       window.removeEventListener("keydown", handleWindowKeyDown, { capture: true });
     };
-  }, [isSwitcher, tabs, selectedIndex, switchTab, handleClose]);
-
-  // Auto-scroll active card into view
-  useEffect(() => {
-    if (isSwitcher && trackRef.current) {
-      const activeEl = trackRef.current.querySelector(`[data-switcher-index="${selectedIndex}"]`);
-      const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth";
-      activeEl?.scrollIntoView({ behavior, inline: "center", block: "nearest" });
-    }
-  }, [selectedIndex, isSwitcher]);
+  });
 
   // Keep saved pins visible even when their browser tab is closed.
   const closedPinnedTabs = useMemo(() => {
@@ -406,29 +296,34 @@ export function App({
     () => buildSearchResults(tabs, query, history, browserHistory, closedPinnedTabs),
     [query, tabs, history, browserHistory, closedPinnedTabs],
   );
-  useEffect(() => {
-    resultsRef.current = results;
-  }, [results]);
+  // Keep the latest result set available to the external message listener without syncing state.
+  resultsRef.current = results;
+  useLayoutEffect(() => {
+    setSelectedIndex((index) => Math.min(index, Math.max(0, results.length - 1)));
+  }, [results.length]);
+  const activeIndex = Math.min(selectedIndex, Math.max(0, results.length - 1));
 
-  // Adjust selected index bounds for search list
-  useEffect(() => {
-    if (!isSwitcher) {
-      setSelectedIndex((index) => Math.min(index, Math.max(0, results.length - 1)));
-    }
-  }, [results.length, isSwitcher]);
-
-  // Ensure selected item is visible in search list
-  useEffect(() => {
-    if (isSwitcher || !isExpanded || results.length === 0) return;
-    const activeEl = listRef.current?.querySelector(`[data-index="${selectedIndex}"]`);
-    activeEl?.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex, isExpanded, results.length, isSwitcher]);
+  const autocompleteFocusedSuggestion = useCallback(() => {
+    const result = results[activeIndex];
+    const value = result?.kind === "pinned" || (result?.kind === "tab" && result.tab.pinned)
+      ? result.tab.url
+      : result?.kind === "visited"
+        ? result.item.url
+        : result?.kind === "history"
+          ? result.query
+          : undefined;
+    if (value === undefined) return false;
+    handleQueryChange(value);
+    inputRef.current?.focus();
+    window.setTimeout(() => inputRef.current?.setSelectionRange(value.length, value.length), 0);
+    return true;
+  }, [activeIndex, handleQueryChange, results]);
 
   function handleSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
       if (query) {
-        setQuery("");
+        handleQueryChange("");
         setIsExpanded(false);
       } else {
         handleClose();
@@ -443,7 +338,9 @@ export function App({
       return;
     }
 
-    if (isGallery && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+    if ((isExpanded || Boolean(query.trim())) && event.key === "ArrowRight" && autocompleteFocusedSuggestion()) {
+      event.preventDefault();
+    } else if (isGallery && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
       event.preventDefault();
       const direction = event.key === "ArrowRight" ? 1 : -1;
       setSelectedIndex((index) => Math.max(0, Math.min(index + direction, results.length - 1)));
@@ -457,7 +354,7 @@ export function App({
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       const step = isGallery ? 2 : 1;
-      if (selectedIndex < step && !query) {
+      if (activeIndex < step && !query) {
         setIsExpanded(false);
       } else {
         setSelectedIndex((index) => isGallery
@@ -466,7 +363,7 @@ export function App({
       }
     } else if (event.key === "Enter") {
       event.preventDefault();
-      executeResult(results[selectedIndex]);
+      executeResult(results[activeIndex]);
     }
   }
 
@@ -492,7 +389,7 @@ export function App({
                   key={`switcher-${tab.windowId}-${tab.id}`}
                   tab={tab}
                   index={index}
-                  isSelected={index === selectedIndex}
+                  isSelected={index === activeIndex}
                   previewUrl={currentPreviewUrl}
                   onClick={settings.disableMouseTabSwitcher ? undefined : () => void switchTab(tab)}
                   onMouseEnter={settings.disableMouseTabSwitcher ? undefined : () => setSelectedIndex(index)}
@@ -531,16 +428,7 @@ export function App({
             type="text"
             className="search-input"
             value={query}
-            onChange={(event) => {
-              const val = event.target.value;
-              setQuery(val);
-              // Start each new query at the best open-tab match. The web search
-              // action becomes the default only when no tab matches.
-              setSelectedIndex(0);
-              if (val.trim()) {
-                setIsExpanded(true);
-              }
-            }}
+            onChange={(event) => handleQueryChange(event.target.value)}
             onKeyDown={handleSearchKeyDown}
             placeholder="Search open tabs or web..."
             aria-label="Search open tabs or the web"
@@ -553,7 +441,7 @@ export function App({
               type="button"
               className="clear-icon-btn"
               onClick={() => {
-                setQuery("");
+                handleQueryChange("");
                 setSelectedIndex(0);
                 setIsExpanded(false);
                 inputRef.current?.focus();
@@ -597,7 +485,7 @@ export function App({
                     key={`gal-${result.tab.windowId}-${result.tab.id}`}
                     tab={result.tab}
                     index={index}
-                    isSelected={index === selectedIndex}
+                    isSelected={index === activeIndex}
                     previewUrl={currentPreviewUrl}
                     onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                     onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
@@ -607,14 +495,14 @@ export function App({
                     key={`${result.kind}-${index}`}
                     result={result}
                     index={index}
-                    isSelected={index === selectedIndex}
+                    isSelected={index === activeIndex}
                     onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
                     onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                   />
                 ))
               ) : (
                 results.map((result, index) => {
-                  const isSelected = index === selectedIndex;
+                  const isSelected = index === activeIndex;
                   if (result.kind !== "tab") {
                     return (
                       <PaletteAction

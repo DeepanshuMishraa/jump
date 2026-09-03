@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { openShortcutSettings } from "../browser";
 import { ArrowUpRightIcon, CommandIcon } from "../icons";
 import { DEFAULT_SETTINGS, getStoredSettings, saveStoredSettings } from "../settings";
 import type { TabSwitchMode, UserSettings } from "../types";
 import { resolveSettingsRead } from "./settingsState";
+import { useMountEffect } from "../hooks/useMountEffect";
 
 export function Popup() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
@@ -17,7 +18,7 @@ export function Popup() {
     ? chrome.runtime.getManifest().version
     : "0.1.3";
 
-  useEffect(() => {
+  useMountEffect(() => {
     const readRevision = settingsRevision.current;
     void getStoredSettings().then((loaded) => {
       setSettings((current) => resolveSettingsRead(
@@ -29,9 +30,9 @@ export function Popup() {
     }).catch(() => {
       // Keep defaults when settings are temporarily unavailable.
     });
-  }, []);
+  });
 
-  useEffect(() => {
+  useMountEffect(() => {
     if (typeof chrome === "undefined" || !chrome.commands?.getAll) return;
     void chrome.commands.getAll().then((commands) => {
       const currentShortcuts: Record<string, string> = {};
@@ -40,7 +41,7 @@ export function Popup() {
       });
       setShortcuts(currentShortcuts);
     });
-  }, []);
+  });
 
   const updateSetting = async <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
     const saveRevision = settingsRevision.current + 1;
