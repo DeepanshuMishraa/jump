@@ -81,16 +81,6 @@ export function App({
     }, 100);
   }, [recentBrowserHistory]);
 
-  const autocompleteResult = useCallback((result: SearchResult) => {
-    const value = result.kind === "history" ? result.query : result.kind === "pinned" ? result.tab.url : undefined;
-    if (value === undefined) return;
-    handleQueryChange(value);
-    inputRef.current?.focus();
-    window.setTimeout(() => {
-      inputRef.current?.setSelectionRange(value.length, value.length);
-    }, 0);
-  }, [handleQueryChange]);
-
   const handleClose = useCallback(() => {
     setIsClosing(true);
     setTimeout(() => {
@@ -300,6 +290,22 @@ export function App({
   // Keep the latest result set available to the external message listener without syncing state.
   resultsRef.current = results;
 
+  const autocompleteFocusedSuggestion = useCallback(() => {
+    const result = results[selectedIndex];
+    const value = result?.kind === "pinned" || (result?.kind === "tab" && result.tab.pinned)
+      ? result.tab.url
+      : result?.kind === "visited"
+        ? result.item.url
+        : result?.kind === "history"
+          ? result.query
+          : undefined;
+    if (value === undefined) return false;
+    handleQueryChange(value);
+    inputRef.current?.focus();
+    window.setTimeout(() => inputRef.current?.setSelectionRange(value.length, value.length), 0);
+    return true;
+  }, [handleQueryChange, results, selectedIndex]);
+
   function handleSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
@@ -319,7 +325,9 @@ export function App({
       return;
     }
 
-    if (isGallery && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+    if (event.key === "ArrowRight" && autocompleteFocusedSuggestion()) {
+      event.preventDefault();
+    } else if (isGallery && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
       event.preventDefault();
       const direction = event.key === "ArrowRight" ? 1 : -1;
       setSelectedIndex((index) => Math.max(0, Math.min(index + direction, results.length - 1)));
@@ -477,7 +485,6 @@ export function App({
                     isSelected={index === selectedIndex}
                     onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
                     onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
-                    onAutocomplete={() => autocompleteResult(result)}
                   />
                 ))
               ) : (
@@ -492,7 +499,6 @@ export function App({
                         isSelected={isSelected}
                         onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
                         onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
-                        onAutocomplete={() => autocompleteResult(result)}
                       />
                     );
                   }
