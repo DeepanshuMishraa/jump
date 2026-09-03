@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, setTabPinned, type BrowserHistoryItem } from "./browser";
 import { ArrowRightIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
@@ -298,6 +298,9 @@ export function App({
   );
   // Keep the latest result set available to the external message listener without syncing state.
   resultsRef.current = results;
+  useLayoutEffect(() => {
+    setSelectedIndex((index) => Math.min(index, Math.max(0, results.length - 1)));
+  }, [results.length]);
   const activeIndex = Math.min(selectedIndex, Math.max(0, results.length - 1));
 
   const autocompleteFocusedSuggestion = useCallback(() => {
@@ -335,7 +338,7 @@ export function App({
       return;
     }
 
-    if (event.key === "ArrowRight" && autocompleteFocusedSuggestion()) {
+    if ((isExpanded || Boolean(query.trim())) && event.key === "ArrowRight" && autocompleteFocusedSuggestion()) {
       event.preventDefault();
     } else if (isGallery && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
       event.preventDefault();
