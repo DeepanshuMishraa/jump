@@ -1,4 +1,4 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import type { BrowserMessage } from "./types";
@@ -9,6 +9,8 @@ function NewTabPage() {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<"search" | "switcher">("search");
   const [activeTabId, setActiveTabId] = useState<number | undefined>();
+  const isOpenRef = useRef(isOpen);
+  isOpenRef.current = isOpen;
 
   useMountEffect(() => {
     const handleMessage = (message: BrowserMessage) => {
@@ -26,7 +28,7 @@ function NewTabPage() {
 
   useMountEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen) {
+      if (!isOpenRef.current) {
         if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "p") {
           e.preventDefault();
           setMode("search");

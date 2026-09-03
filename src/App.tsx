@@ -60,7 +60,10 @@ export function App({
   });
 
   const historySearchTimerRef = useRef<number | undefined>(undefined);
+  const historyRequestIdRef = useRef(0);
   const handleQueryChange = useCallback((value: string) => {
+    const requestId = historyRequestIdRef.current + 1;
+    historyRequestIdRef.current = requestId;
     setQuery(value);
     setSelectedIndex(0);
     setIsExpanded(Boolean(value.trim()));
@@ -73,6 +76,7 @@ export function App({
     if (!trimmed) return;
     historySearchTimerRef.current = window.setTimeout(() => {
       void getBrowserHistory(trimmed, 8).then((items) => {
+        if (historyRequestIdRef.current !== requestId) return;
         const seen = new Set(localMatches.map((item) => item.id));
         setBrowserHistory([...localMatches, ...items.filter((item) => !seen.has(item.id))]);
       }).catch(() => {
@@ -80,6 +84,11 @@ export function App({
       });
     }, 100);
   }, [recentBrowserHistory]);
+
+  useMountEffect(() => () => {
+    historyRequestIdRef.current += 1;
+    if (historySearchTimerRef.current !== undefined) window.clearTimeout(historySearchTimerRef.current);
+  });
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -162,7 +171,7 @@ export function App({
           setMode("search");
           if (message.previewUrl !== undefined) setCurrentPreviewUrl(message.previewUrl);
           setIsExpanded(false);
-          setQuery("");
+          handleQueryChange("");
           setTimeout(() => inputRef.current?.focus(), 50);
         }
       } else if (message.type === "cycle-tab-switcher") {
@@ -178,7 +187,7 @@ export function App({
         const currentIndex = selectedIndexRef.current;
         const selectedResult = modeRef.current === "switcher"
           ? (currentTabs[currentIndex] ? { kind: "tab" as const, tab: currentTabs[currentIndex] } : undefined)
-          : resultsRef.current[selectedIndex];
+          : resultsRef.current[currentIndex];
         if (selectedResult?.kind === "tab") {
           void setTabPinned(selectedResult.tab, !selectedResult.tab.pinned).then(() => void refreshTabsRef.current());
         } else if (selectedResult?.kind === "pinned") {
@@ -252,14 +261,14 @@ export function App({
         return;
       }
 
-      if (event.key === "ArrowRight" || event.key === "Tab") {
-        event.preventDefault();
-        event.stopPropagation();
-        setSelectedIndex((curr) => (tabsRef.current.length ? (curr + 1) % tabsRef.current.length : 0));
-      } else if (event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey)) {
+      if (event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey)) {
         event.preventDefault();
         event.stopPropagation();
         setSelectedIndex((curr) => (tabsRef.current.length ? (curr - 1 + tabsRef.current.length) % tabsRef.current.length : 0));
+      } else if (event.key === "ArrowRight" || event.key === "Tab") {
+        event.preventDefault();
+        event.stopPropagation();
+        setSelectedIndex((curr) => (tabsRef.current.length ? (curr + 1) % tabsRef.current.length : 0));
       } else if (event.key === "Enter") {
         event.preventDefault();
         event.stopPropagation();
@@ -289,9 +298,10 @@ export function App({
   );
   // Keep the latest result set available to the external message listener without syncing state.
   resultsRef.current = results;
+  const activeIndex = Math.min(selectedIndex, Math.max(0, results.length - 1));
 
   const autocompleteFocusedSuggestion = useCallback(() => {
-    const result = results[selectedIndex];
+    const result = results[activeIndex];
     const value = result?.kind === "pinned" || (result?.kind === "tab" && result.tab.pinned)
       ? result.tab.url
       : result?.kind === "visited"
@@ -304,13 +314,13 @@ export function App({
     inputRef.current?.focus();
     window.setTimeout(() => inputRef.current?.setSelectionRange(value.length, value.length), 0);
     return true;
-  }, [handleQueryChange, results, selectedIndex]);
+  }, [activeIndex, handleQueryChange, results]);
 
   function handleSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
       if (query) {
-        setQuery("");
+        handleQueryChange("");
         setIsExpanded(false);
       } else {
         handleClose();
@@ -341,7 +351,7 @@ export function App({
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       const step = isGallery ? 2 : 1;
-      if (selectedIndex < step && !query) {
+      if (activeIndex < step && !query) {
         setIsExpanded(false);
       } else {
         setSelectedIndex((index) => isGallery
@@ -350,7 +360,7 @@ export function App({
       }
     } else if (event.key === "Enter") {
       event.preventDefault();
-      executeResult(results[selectedIndex]);
+      executeResult(results[activeIndex]);
     }
   }
 
@@ -376,7 +386,7 @@ export function App({
                   key={`switcher-${tab.windowId}-${tab.id}`}
                   tab={tab}
                   index={index}
-                  isSelected={index === selectedIndex}
+                  isSelected={index === activeIndex}
                   previewUrl={currentPreviewUrl}
                   onClick={settings.disableMouseTabSwitcher ? undefined : () => void switchTab(tab)}
                   onMouseEnter={settings.disableMouseTabSwitcher ? undefined : () => setSelectedIndex(index)}
@@ -428,7 +438,7 @@ export function App({
               type="button"
               className="clear-icon-btn"
               onClick={() => {
-                setQuery("");
+                handleQueryChange("");
                 setSelectedIndex(0);
                 setIsExpanded(false);
                 inputRef.current?.focus();
@@ -472,7 +482,7 @@ export function App({
                     key={`gal-${result.tab.windowId}-${result.tab.id}`}
                     tab={result.tab}
                     index={index}
-                    isSelected={index === selectedIndex}
+                    isSelected={index === activeIndex}
                     previewUrl={currentPreviewUrl}
                     onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                     onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
@@ -482,14 +492,14 @@ export function App({
                     key={`${result.kind}-${index}`}
                     result={result}
                     index={index}
-                    isSelected={index === selectedIndex}
+                    isSelected={index === activeIndex}
                     onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
                     onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                   />
                 ))
               ) : (
                 results.map((result, index) => {
-                  const isSelected = index === selectedIndex;
+                  const isSelected = index === activeIndex;
                   if (result.kind !== "tab") {
                     return (
                       <PaletteAction
