@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { openShortcutSettings } from "../browser";
-import { ArrowUpRightIcon, CommandIcon } from "../icons";
+import { CommandIcon, ArrowUpRightIcon, InfoIcon } from "../icons";
 import { DEFAULT_SETTINGS, getStoredSettings, saveStoredSettings } from "../settings";
 import type { TabSwitchMode, UserSettings } from "../types";
 import { resolveSettingsRead } from "./settingsState";
@@ -9,6 +9,7 @@ import { useMountEffect } from "../hooks/useMountEffect";
 export function Popup() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [shortcuts, setShortcuts] = useState<Record<string, string>>({});
+  const [shortcutsLoaded, setShortcutsLoaded] = useState(false);
   const settingsRevision = useRef(0);
   const isMac = typeof navigator !== "undefined" && navigator.platform.includes("Mac");
   const defaultSearchShortcut = isMac ? "⌘⇧P" : "Ctrl Shift P";
@@ -40,8 +41,24 @@ export function Popup() {
         if (command.name && command.shortcut) currentShortcuts[command.name] = command.shortcut;
       });
       setShortcuts(currentShortcuts);
+      setShortcutsLoaded(true);
     });
   });
+
+  const shortcutRows = [
+    { label: "Search tabs", command: "open-palette" as const, fallback: defaultSearchShortcut },
+    { label: "Visual switcher", command: "open-tab-switcher" as const, fallback: defaultSwitcherShortcut },
+    { label: "Pin selected tab", command: "pin-tab" as const, fallback: defaultPinShortcut },
+  ];
+  const unsetCommands = shortcutRows.filter((row) => !shortcuts[row.command]);
+
+  const openShortcutSettingsAndClose = async () => {
+    try {
+      await openShortcutSettings();
+    } finally {
+      window.close();
+    }
+  };
 
   const updateSetting = async <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
     const saveRevision = settingsRevision.current + 1;
@@ -123,37 +140,37 @@ export function Popup() {
       </section>
 
       <section className="popup-shortcuts" aria-label="Keyboard shortcuts">
-        <div className="popup-shortcut-row">
-          <span>Search tabs</span>
-          <span className="popup-key-group">
-            <kbd>{shortcuts["open-palette"] ?? defaultSearchShortcut}</kbd>
-          </span>
-        </div>
-        <div className="popup-shortcut-row">
-          <span>Visual switcher</span>
-          <span className="popup-key-group">
-            <kbd>{shortcuts["open-tab-switcher"] ?? defaultSwitcherShortcut}</kbd>
-          </span>
-        </div>
-        <div className="popup-shortcut-row">
-          <span>Pin selected tab</span>
-          <span className="popup-key-group">
-            <kbd>{shortcuts["pin-tab"] ?? defaultPinShortcut}</kbd>
-          </span>
-        </div>
+        {shortcutsLoaded && unsetCommands.length > 0 && (
+          <p className="popup-shortcut-warning" role="alert">
+            <InfoIcon size={14} aria-hidden="true" />
+            <span>
+              {unsetCommands.length === 1
+                ? "Shortcut not assigned: "
+                : "Shortcuts not assigned: "}
+              {unsetCommands.map((row) => row.label).join(", ")}.
+            </span>
+            <button type="button" onClick={() => void openShortcutSettingsAndClose()}>
+              Fix it
+            </button>
+          </p>
+        )}
+        {shortcutRows.map((row) => (
+          <div key={row.command} className="popup-shortcut-row">
+            <span>{row.label}</span>
+            <span className="popup-key-group">
+              <kbd className={shortcutsLoaded && !shortcuts[row.command] ? "popup-key-unset" : undefined}>
+                {shortcuts[row.command] ?? (shortcutsLoaded ? "Not set" : row.fallback)}
+              </kbd>
+            </span>
+          </div>
+        ))}
       </section>
 
       <footer className="popup-footer-bar">
         <button
           type="button"
           className="popup-settings-link"
-          onClick={async () => {
-            try {
-              await openShortcutSettings();
-            } finally {
-              window.close();
-            }
-          }}
+          onClick={() => void openShortcutSettingsAndClose()}
         >
           <span>Customize shortcuts</span>
           <ArrowUpRightIcon size={11} />
