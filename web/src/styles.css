@@ -406,6 +406,26 @@ h1 .hero-highlight:after {
   animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
 }
 
+.hero-proof {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: clamp(28px, 3.5vw, 40px);
+  font-size: 12px;
+  font-weight: 450;
+  color: var(--muted);
+  letter-spacing: -0.01em;
+  animation: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) 20ms both;
+}
+
+.hero-proof-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
+}
+
 .actions {
   display: flex;
   align-items: center;

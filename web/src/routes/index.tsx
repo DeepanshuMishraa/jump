@@ -171,8 +171,13 @@ function Home() {
 					</div>
 				</nav>
 
-				{/* HERO SECTION (NO IMAGES, NO BANNER, PURE MONOSPACE TYPOGRAPHY) */}
+				{/* HERO SECTION (NO IMAGES, PURE MONOSPACE TYPOGRAPHY) */}
 				<section className="hero-copy" id="top">
+					<div className="hero-proof">
+						<span className="hero-proof-dot" />
+						<span>Used by 300+ people</span>
+					</div>
+
 					<h1>
 						Switch open tabs.
 						<br />
