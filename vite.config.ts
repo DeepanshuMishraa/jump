@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "node:path";
 import { copyFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -12,6 +13,7 @@ export default defineConfig(({ mode }) => {
   return {
   plugins: [
     react(),
+    tailwindcss(),
     {
       name: "copy-extension-assets",
       closeBundle() {

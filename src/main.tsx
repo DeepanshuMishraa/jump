@@ -1,7 +1,8 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import type { BrowserMessage } from "./types";
+import { useMountEffect } from "./hooks/useMountEffect";
 import "./styles.css";
 
 function NewTabPage() {
@@ -9,7 +10,7 @@ function NewTabPage() {
   const [mode, setMode] = useState<"search" | "switcher">("search");
   const [activeTabId, setActiveTabId] = useState<number | undefined>();
 
-  useEffect(() => {
+  useMountEffect(() => {
     const handleMessage = (message: BrowserMessage) => {
       if (message.type === "open-palette") {
         setMode(message.mode || "search");
@@ -21,9 +22,9 @@ function NewTabPage() {
       chrome.runtime.onMessage.addListener(handleMessage);
       return () => chrome.runtime.onMessage.removeListener(handleMessage);
     }
-  }, []);
+  });
 
-  useEffect(() => {
+  useMountEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) {
         if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "p") {
@@ -40,7 +41,7 @@ function NewTabPage() {
 
     window.addEventListener("keydown", handleKeyDown, { capture: true });
     return () => window.removeEventListener("keydown", handleKeyDown, { capture: true });
-  }, [isOpen]);
+  });
 
   if (!isOpen) {
     return <div className="newtab-canvas" />;

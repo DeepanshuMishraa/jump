@@ -1,10 +1,17 @@
-:host {
+@import "tailwindcss";
+
+@layer base {
+  :host {
+
   color-scheme: light dark;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  }
 }
+
+@layer components {
 
 html, body {
   margin: 0;
@@ -1399,4 +1406,6 @@ kbd {
   flex-shrink: 0;
   align-self: center;
   color: var(--text-secondary);
+}
+
 }

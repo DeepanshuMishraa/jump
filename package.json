@@ -13,15 +13,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@vitejs/plugin-react": "latest",
     "@types/chrome": "latest",
+    "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
-    "@types/node": "latest",
+    "@vitejs/plugin-react": "latest",
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
     "vite": "latest"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "tailwindcss": "^4.3.3"
+  }
 }
