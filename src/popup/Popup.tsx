@@ -15,6 +15,7 @@ export function Popup() {
   const defaultSearchShortcut = isMac ? "⌘⇧P" : "Ctrl Shift P";
   const defaultSwitcherShortcut = isMac ? "⌥Q" : "Alt Q";
   const defaultPinShortcut = isMac ? "⌘K" : "Alt K";
+  const defaultMuteShortcut = isMac ? "⌥M" : "Alt M";
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
     ? chrome.runtime.getManifest().version
     : "0.1.3";
@@ -52,6 +53,7 @@ export function Popup() {
     { label: "Search tabs", command: "open-palette" as const, fallback: defaultSearchShortcut },
     { label: "Visual switcher", command: "open-tab-switcher" as const, fallback: defaultSwitcherShortcut },
     { label: "Pin selected tab", command: "pin-tab" as const, fallback: defaultPinShortcut },
+    { label: "Mute selected tab", command: "mute-tab" as const, fallback: defaultMuteShortcut },
   ];
   const unsetCommands = shortcutRows.filter((row) => !shortcuts[row.command]);
 

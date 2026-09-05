@@ -12,7 +12,7 @@
   "permissions": ["tabs", "windows", "storage", "search", "history"],
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
+      "matches": ["<all_urls>"],
       "js": ["assets/content.js"],
       "run_at": "document_idle"
     }
@@ -52,6 +52,13 @@
         "mac": "Command+K"
       },
       "description": "Pin or unpin the selected tab"
+    },
+    "mute-tab": {
+      "suggested_key": {
+        "default": "Alt+M",
+        "mac": "Alt+M"
+      },
+      "description": "Mute or unmute the selected tab in the command palette"
     }
   }
 }

@@ -48,6 +48,7 @@ export type BrowserMessage =
   | { type: "get-tabs" }
   | { type: "search-history"; query: string; maxResults?: number }
   | { type: "activate-tab"; tab: PaletteTab }
+  | { type: "toggle-tab-muted"; tabId: number; muted: boolean }
   | { type: "open-url"; url: string; openerTabId?: number }
   | { type: "search-web"; query: string }
   | { type: "open-shortcut-settings" }
@@ -55,6 +56,7 @@ export type BrowserMessage =
   | { type: "update-switcher-preview"; previewUrl: string }
   | { type: "cycle-tab-switcher"; direction?: "next" | "prev" }
   | { type: "request-pin-selected-tab" }
+  | { type: "request-mute-selected-tab" }
   | { type: "set-tab-pinned"; tab: PinnedTab; pinned: boolean }
   | { type: "get-settings" }
   | { type: "save-settings"; settings: Partial<UserSettings> };

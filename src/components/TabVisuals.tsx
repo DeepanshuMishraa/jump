@@ -15,8 +15,36 @@ export function TabFavicon({ tab, size = 16 }: { tab: PaletteTab; size?: number 
   return <img className="item-icon tab-favicon" style={{ width: size, height: size }} src={tab.faviconUrl} alt="" onError={() => setFailedUrl(tab.faviconUrl)} loading="eager" />;
 }
 
-export function TabSoundIndicator({ tab, size = 14 }: { tab: PaletteTab; size?: number }) {
-  if (tab.muted) return <MuteIcon size={size} className="tab-audible-icon" />;
-  if (tab.audible) return <SpeakerIcon size={size} className="tab-audible-icon" />;
-  return null;
+export function TabSoundIndicator({
+  tab,
+  size = 14,
+  onToggleMute,
+}: {
+  tab: PaletteTab;
+  size?: number;
+  onToggleMute?: () => void;
+}) {
+  if (!tab.muted && !tab.audible) return null;
+
+  const label = tab.muted ? "Unmute tab" : "Mute tab";
+  const icon = tab.muted
+    ? <MuteIcon size={size} className="tab-audible-icon" />
+    : <SpeakerIcon size={size} className="tab-audible-icon" />;
+  if (!onToggleMute) return icon;
+
+  return (
+    <button
+      type="button"
+      className="tab-sound-button"
+      aria-label={label}
+      title={label}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggleMute();
+      }}
+    >
+      {icon}
+    </button>
+  );
 }
