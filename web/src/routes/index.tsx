@@ -175,7 +175,7 @@ function Home() {
 				<section className="hero-copy" id="top">
 					<div className="hero-proof">
 						<span className="hero-proof-dot" />
-						<span>Used by 300+ people</span>
+						<span>Used by 700+ people</span>
 					</div>
 
 					<h1>
