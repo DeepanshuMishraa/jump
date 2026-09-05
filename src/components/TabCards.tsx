@@ -9,9 +9,10 @@ type CardProps = {
   previewUrl?: string;
   onClick?: () => void;
   onMouseEnter?: () => void;
+  onToggleMute?: () => void;
 };
 
-export function SwitcherCard({ tab, isSelected, previewUrl, index, onClick, onMouseEnter }: CardProps) {
+export function SwitcherCard({ tab, isSelected, previewUrl, index, onClick, onMouseEnter, onToggleMute }: CardProps) {
   const effectivePreview = tab.previewUrl || (tab.active && tab.windowFocused ? previewUrl : undefined);
   return (
     <div data-switcher-index={index} className={`switcher-card ${isSelected ? "is-selected" : ""}`} onClick={onClick} onMouseEnter={onMouseEnter} role="option" aria-selected={isSelected}>
@@ -28,13 +29,13 @@ export function SwitcherCard({ tab, isSelected, previewUrl, index, onClick, onMo
         <TabFavicon tab={tab} size={18} />
         <span className="switcher-card-title">{tab.title}</span>
         {tab.pinned && <PinIcon className="tab-pinned-icon" size={13} />}
-        <TabSoundIndicator tab={tab} />
+        <TabSoundIndicator tab={tab} onToggleMute={onToggleMute} />
       </div>
     </div>
   );
 }
 
-export function GalleryCard({ tab, index, isSelected, previewUrl, onClick, onMouseEnter }: CardProps) {
+export function GalleryCard({ tab, index, isSelected, previewUrl, onClick, onMouseEnter, onToggleMute }: CardProps) {
   const effectivePreview = tab.previewUrl || (tab.active && tab.windowFocused ? previewUrl : undefined);
   return (
     <div data-index={index} className={`gallery-card ${isSelected ? "selected" : ""}`} onClick={onClick} onMouseEnter={onMouseEnter} role="option" aria-selected={isSelected}>
@@ -51,7 +52,7 @@ export function GalleryCard({ tab, index, isSelected, previewUrl, onClick, onMou
           <TabFavicon tab={tab} size={15} />
           <span className="gallery-title">{tab.title}</span>
           {tab.pinned && <PinIcon className="tab-pinned-icon" size={12} />}
-          <TabSoundIndicator tab={tab} />
+          <TabSoundIndicator tab={tab} onToggleMute={onToggleMute} />
         </div>
         {tab.hostname && <span className="gallery-domain">{tab.hostname}</span>}
       </div>

@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, setTabPinned, type BrowserHistoryItem } from "./browser";
+import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, setTabMuted, setTabPinned, type BrowserHistoryItem } from "./browser";
 import { ArrowRightIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
@@ -45,6 +45,7 @@ export function App({
   const selectedIndexRef = useRef(selectedIndex);
   const refreshTabsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const switchTabRef = useRef<(targetTab?: PaletteTab) => Promise<void>>(() => Promise.resolve());
+  const muteTabRef = useRef<(targetTab?: PaletteTab) => Promise<void>>(() => Promise.resolve());
   const handleCloseRef = useRef<() => void>(() => undefined);
   tabsRef.current = tabs;
   modeRef.current = mode;
@@ -193,6 +194,14 @@ export function App({
         } else if (selectedResult?.kind === "pinned") {
           void setTabPinned(selectedResult.tab, false);
         }
+      } else if (message.type === "request-mute-selected-tab") {
+        const currentTabs = tabsRef.current;
+        const currentIndex = selectedIndexRef.current;
+        const result = resultsRef.current[currentIndex];
+        const selectedResult = modeRef.current === "switcher"
+          ? currentTabs[currentIndex]
+          : result?.kind === "tab" ? result.tab : undefined;
+        void muteTabRef.current(selectedResult);
       }
     };
 
@@ -212,6 +221,17 @@ export function App({
     [handleClose]
   );
   switchTabRef.current = switchTab;
+
+  const muteTab = useCallback(async (targetTab?: PaletteTab) => {
+    if (!targetTab || (!targetTab.audible && !targetTab.muted)) return;
+    const result = await setTabMuted(targetTab);
+    if (!result.ok) return;
+    tabsRequestIdRef.current += 1;
+    setTabs((currentTabs) => currentTabs.map((tab) => tab.id === targetTab.id
+      ? { ...tab, muted: result.muted }
+      : tab));
+  }, []);
+  muteTabRef.current = muteTab;
 
   const executeResult = useCallback((result?: SearchResult) => {
     if (!result) return;
@@ -253,6 +273,18 @@ export function App({
     };
 
     const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.altKey && (event.key.toLowerCase() === "m" || event.code === "KeyM")) {
+        event.preventDefault();
+        event.stopPropagation();
+        const currentTabs = tabsRef.current;
+        const selectedResult = resultsRef.current[selectedIndexRef.current];
+        const targetTab = modeRef.current === "switcher"
+          ? currentTabs[selectedIndexRef.current]
+          : selectedResult?.kind === "tab" ? selectedResult.tab : undefined;
+        void muteTabRef.current(targetTab);
+        return;
+      }
+
       if (modeRef.current !== "switcher") return;
       if (event.key === "Escape") {
         event.preventDefault();
@@ -393,6 +425,7 @@ export function App({
                   previewUrl={currentPreviewUrl}
                   onClick={settings.disableMouseTabSwitcher ? undefined : () => void switchTab(tab)}
                   onMouseEnter={settings.disableMouseTabSwitcher ? undefined : () => setSelectedIndex(index)}
+                  onToggleMute={settings.disableMouseTabSwitcher ? undefined : () => void muteTab(tab)}
                 />
               ))
             )}
@@ -489,6 +522,7 @@ export function App({
                     previewUrl={currentPreviewUrl}
                     onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                     onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
+                    onToggleMute={settings.disableMouseCommandPalette ? undefined : () => void muteTab(result.tab)}
                   />
                 ) : (
                   <PaletteAction
@@ -541,7 +575,11 @@ export function App({
                       </div>
 
                       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <TabSoundIndicator tab={tab} size={16} />
+                        <TabSoundIndicator
+                          tab={tab}
+                          size={16}
+                          onToggleMute={settings.disableMouseCommandPalette ? undefined : () => void muteTab(tab)}
+                        />
                         {!tab.active || !tab.windowFocused ? (
                           <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
                             <span className="action-text">Switch to Tab</span>

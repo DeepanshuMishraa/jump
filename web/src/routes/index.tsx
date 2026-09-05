@@ -148,7 +148,7 @@ function Home() {
 					<a className="brand" href="/" aria-label="Jump home">
 						<BrandMark />
 						<span className="brand-name">Jump</span>
-						<span className="version">v0.1.4</span>
+						<span className="version">v0.1.5</span>
 					</a>
 
 					<div className="nav-side">
@@ -175,7 +175,7 @@ function Home() {
 				<section className="hero-copy" id="top">
 					<div className="hero-proof">
 						<span className="hero-proof-dot" />
-						<span>Used by 300+ people</span>
+						<span>Used by 700+ people</span>
 					</div>
 
 					<h1>

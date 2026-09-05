@@ -1441,10 +1441,30 @@ kbd {
   }
 }
 
+.tab-sound-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.tab-sound-button:hover,
+.tab-sound-button:focus-visible {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+}
+
 .tab-audible-icon {
   flex-shrink: 0;
   align-self: center;
-  color: var(--text-secondary);
+  color: currentColor;
 }
 
 }

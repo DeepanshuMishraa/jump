@@ -322,6 +322,7 @@ chrome.commands.onCommand.addListener((command) => {
   if (command === "open-palette") void openSearchPalette();
   if (command === "open-tab-switcher") void openTabSwitcher();
   if (command === "pin-tab") void sendToActiveTab({ type: "request-pin-selected-tab" });
+  if (command === "mute-tab") void sendToActiveTab({ type: "request-mute-selected-tab" });
 });
 
 chrome.action.onClicked.addListener(() => void openSearchPalette());
@@ -341,6 +342,12 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResp
     void chrome.tabs.update(message.tab.id, { active: true })
       .then(() => chrome.windows.update(message.tab.windowId, { focused: true }))
       .then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  if (message.type === "toggle-tab-muted") {
+    void chrome.tabs.update(message.tabId, { muted: message.muted })
+      .then(() => sendResponse({ ok: true, muted: message.muted }), () => sendResponse({ ok: false, muted: false }));
     return true;
   }
 
