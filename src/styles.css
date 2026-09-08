@@ -288,7 +288,7 @@ button {
 
 .switcher-hud {
   position: relative;
-  width: min(94vw, 1140px);
+  width: fit-content;
   max-width: min(94vw, 1140px);
   background: var(--bg-hud);
   backdrop-filter: blur(48px) saturate(200%);
@@ -312,6 +312,8 @@ button {
   display: flex;
   flex-direction: row;
   align-items: center;
+  width: max-content;
+  max-width: calc(94vw - 36px);
   gap: 14px;
   overflow-x: auto;
   scrollbar-width: none;
