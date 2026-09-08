@@ -1,10 +1,17 @@
 export type ColorTheme =
   | "default"
-  | "catppuccin"
-  | "rose-pine"
+  | "catppuccin-latte"
+  | "catppuccin-frappe"
+  | "catppuccin-macchiato"
+  | "catppuccin-mocha"
+  | "rose-pine-dawn"
+  | "rose-pine-main"
+  | "rose-pine-moon"
   | "tokyo-night"
   | "nord"
-  | "gruvbox";
+  | "gruvbox-dark"
+  | "gruvbox-light"
+  | "vesper";
 
 export type ViewMode = "list" | "gallery";
 export type TabSwitchMode = "recent" | "order";

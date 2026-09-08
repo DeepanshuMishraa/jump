@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { openShortcutSettings } from "../browser";
 import { CommandIcon, ArrowUpRightIcon, InfoIcon } from "../icons";
-import { DEFAULT_SETTINGS, getStoredSettings, saveStoredSettings } from "../settings";
+import { DEFAULT_SETTINGS, getStoredSettings, saveStoredSettings, THEMES } from "../settings";
 import type { TabSwitchMode, UserSettings } from "../types";
 import { resolveSettingsRead } from "./settingsState";
 import { useMountEffect } from "../hooks/useMountEffect";
@@ -85,7 +85,7 @@ export function Popup() {
   };
 
   return (
-    <main className="popup-container">
+    <main className="popup-container" data-theme={settings.theme}>
       <header className="popup-header">
         <div className="popup-brand">
           <span className="popup-mark" aria-hidden="true">
@@ -100,6 +100,44 @@ export function Popup() {
           </div>
         </div>
       </header>
+
+      <section className="popup-section" aria-labelledby="theme-label">
+        <div className="popup-section-heading">
+          <span id="theme-label">Theme</span>
+          <span className="popup-section-context">Palette</span>
+        </div>
+        <label className="popup-theme-select-wrap">
+          <span className="sr-only">Choose a theme</span>
+          <select
+            className="popup-theme-select"
+            value={settings.theme}
+            onChange={(event) => {
+              const theme = THEMES.find((item) => item.id === event.target.value)?.id;
+              if (theme) void updateSetting("theme", theme);
+            }}
+          >
+            <option value="default">OLED Black · Pitch Dark</option>
+            <optgroup label="Catppuccin">
+              {THEMES.filter((theme) => theme.id.startsWith("catppuccin-")).map((theme) => (
+                <option key={theme.id} value={theme.id}>{theme.badge}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Rosé Pine">
+              {THEMES.filter((theme) => theme.id.startsWith("rose-pine-")).map((theme) => (
+                <option key={theme.id} value={theme.id}>{theme.badge}</option>
+              ))}
+            </optgroup>
+            <optgroup label="Gruvbox">
+              {THEMES.filter((theme) => theme.id.startsWith("gruvbox-")).map((theme) => (
+                <option key={theme.id} value={theme.id}>{theme.badge}</option>
+              ))}
+            </optgroup>
+            <option value="vesper">Vesper · Peppermint</option>
+            <option value="nord">Nord · Arctic</option>
+            <option value="tokyo-night">Tokyo Night · Night</option>
+          </select>
+        </label>
+      </section>
 
       <section className="popup-section" aria-labelledby="tab-switching-label">
         <div className="popup-section-heading">
