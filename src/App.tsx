@@ -468,7 +468,12 @@ export function App({
   const visiblePalettePosition = dragPosition ?? settings.palettePosition;
 
   const handlePalettePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 0 || event.target instanceof HTMLInputElement || event.target instanceof HTMLButtonElement) return;
+    const target = event.target instanceof Element ? event.target.closest("input, button") : null;
+    if (
+      settings.disableMouseCommandPalette ||
+      event.button !== 0 ||
+      target !== null
+    ) return;
     const position = settings.palettePosition;
     paletteDragRef.current = {
       pointerId: event.pointerId,
@@ -512,7 +517,10 @@ export function App({
     const width = card?.getBoundingClientRect().width ?? 640;
     const height = card?.getBoundingClientRect().height ?? 54;
     const x = Math.min(1 - width / (window.innerWidth * 2), Math.max(width / (window.innerWidth * 2), (column + 0.5) / 3));
-    const y = Math.min(1 - height / (window.innerHeight * 2), Math.max(height / (window.innerHeight * 2), (row + 0.5) / 3));
+    const y = Math.min(
+      1 - height / window.innerHeight,
+      Math.max(0, (row + 0.5) / 3 - height / (window.innerHeight * 2)),
+    );
     const nextPosition = { x, y };
     paletteDragRef.current = undefined;
     setIsDraggingPalette(false);
@@ -522,6 +530,15 @@ export function App({
       setSettings((current) => ({ ...current, palettePosition: nextPosition }));
       void saveStoredSettings({ palettePosition: nextPosition }).then(setSettings);
     }
+  };
+
+  const cancelPaletteDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = paletteDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    paletteDragRef.current = undefined;
+    setIsDraggingPalette(false);
+    setDragPosition(undefined);
+    setDragPreviewCell(undefined);
   };
 
   return (
@@ -555,7 +572,7 @@ export function App({
           onPointerDown={handlePalettePointerDown}
           onPointerMove={handlePalettePointerMove}
           onPointerUp={finishPaletteDrag}
-          onPointerCancel={finishPaletteDrag}
+          onPointerCancel={cancelPaletteDrag}
         >
           <SearchIcon size={17} className="search-lead-icon" />
           <input

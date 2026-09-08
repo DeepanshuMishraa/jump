@@ -113,7 +113,7 @@ button {
 }
 
 .brand-mark-cut {
-  fill: var(--ink);
+  fill: var(--paper);
 }
 
 .brand:hover .brand-mark,

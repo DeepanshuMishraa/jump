@@ -18,7 +18,7 @@ export function Popup() {
   const defaultMuteShortcut = isMac ? "⌥M" : "Alt M";
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
     ? chrome.runtime.getManifest().version
-    : "0.1.3";
+    : "0.1.6";
 
   useMountEffect(() => {
     const readRevision = settingsRevision.current;
@@ -116,7 +116,9 @@ export function Popup() {
               if (theme) void updateSetting("theme", theme);
             }}
           >
-            <option value="default">OLED Black · Pitch Dark</option>
+            {THEMES.filter((theme) => !["catppuccin-", "rose-pine-", "gruvbox-"].some((prefix) => theme.id.startsWith(prefix))).map((theme) => (
+              <option key={theme.id} value={theme.id}>{theme.name} · {theme.badge}</option>
+            ))}
             <optgroup label="Catppuccin">
               {THEMES.filter((theme) => theme.id.startsWith("catppuccin-")).map((theme) => (
                 <option key={theme.id} value={theme.id}>{theme.badge}</option>
@@ -132,9 +134,6 @@ export function Popup() {
                 <option key={theme.id} value={theme.id}>{theme.badge}</option>
               ))}
             </optgroup>
-            <option value="vesper">Vesper · Peppermint</option>
-            <option value="nord">Nord · Arctic</option>
-            <option value="tokyo-night">Tokyo Night · Night</option>
           </select>
         </label>
       </section>

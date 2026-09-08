@@ -31,7 +31,7 @@ const structuredData = {
 			applicationCategory: "BrowserApplication",
 			operatingSystem: "ChromeOS, macOS, Windows, Linux",
 			browserRequirements: "Requires a Chromium-based browser",
-			softwareVersion: "0.1.5",
+			softwareVersion: "0.1.6",
 			featureList: [
 				"Visual tab switcher",
 				"Fuzzy tab search",
