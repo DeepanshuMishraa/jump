@@ -1,4 +1,4 @@
-import type { ColorTheme, PinnedTab, TabSwitchMode, UserSettings, ViewMode } from "./types";
+import type { ColorTheme, PalettePosition, PinnedTab, TabSwitchMode, UserSettings, ViewMode } from "./types";
 
 export const DEFAULT_SETTINGS: UserSettings = {
   viewMode: "list",
@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   disableMouseCommandPalette: false,
   tabSwitchMode: "recent",
   pinnedTabs: [],
+  palettePosition: { x: 0.5, y: 0.28 },
 };
 
 export type ThemeInfo = {
@@ -93,6 +94,16 @@ function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean";
 }
 
+function parsePalettePosition(value: unknown): PalettePosition {
+  if (typeof value !== "object" || value === null || !("x" in value) || !("y" in value)) {
+    return DEFAULT_SETTINGS.palettePosition;
+  }
+  const { x, y } = value;
+  return typeof x === "number" && Number.isFinite(x) && typeof y === "number" && Number.isFinite(y)
+    ? { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
+    : DEFAULT_SETTINGS.palettePosition;
+}
+
 function parsePinnedTabs(value: unknown): PinnedTab[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((tab): PinnedTab[] => {
@@ -158,7 +169,8 @@ export function parseStoredSettings(value: unknown): UserSettings {
     : "pinnedTabIds" in value
       ? parseLegacyPinnedTabs(value.pinnedTabIds)
       : DEFAULT_SETTINGS.pinnedTabs;
-  return { viewMode, theme, disableMouseTabSwitcher, disableMouseCommandPalette, tabSwitchMode, pinnedTabs };
+  const palettePosition = "palettePosition" in value ? parsePalettePosition(value.palettePosition) : DEFAULT_SETTINGS.palettePosition;
+  return { viewMode, theme, disableMouseTabSwitcher, disableMouseCommandPalette, tabSwitchMode, pinnedTabs, palettePosition };
 }
 
 function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
@@ -179,6 +191,7 @@ function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
     ...( "pinnedTabIds" in value && Array.isArray(value.pinnedTabIds)
       ? { pinnedTabs: parseLegacyPinnedTabs(value.pinnedTabIds) }
       : {}),
+    ...( "palettePosition" in value ? { palettePosition: parsePalettePosition(value.palettePosition) } : {}),
   };
 }
 
@@ -217,6 +230,7 @@ async function readChromeLocalSettings() {
     "tabSwitchMode",
     "pinnedTabs",
     "pinnedTabIds",
+    "palettePosition",
   ]);
   return parseStoredSettings(stored);
 }
@@ -244,6 +258,7 @@ export async function getStoredSettings(): Promise<UserSettings> {
         "tabSwitchMode",
         "pinnedTabs",
         "pinnedTabIds",
+        "palettePosition",
       ]));
       selectedBackend = "sync";
       return settings;

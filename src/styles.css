@@ -218,11 +218,8 @@ button {
 .palette-backdrop {
   position: fixed;
   inset: 0;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding-top: 28vh;
-  padding-top: 28svh;
+  display: block;
+  padding: 0;
   background: rgba(0, 0, 0, 0.38);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -414,6 +411,9 @@ button {
    ========================================================================== */
 
 .palette-card {
+  position: absolute;
+  z-index: 2;
+  transform: translateX(-50%);
   width: min(calc(100vw - 32px), 640px);
   background: var(--bg-panel);
   backdrop-filter: blur(40px) saturate(190%);
@@ -456,6 +456,8 @@ button {
   height: 54px;
   min-height: 54px;
   padding: 0 16px;
+  cursor: grab;
+  touch-action: none;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -468,6 +470,35 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.palette-card.is-dragging .search-bar-row {
+  cursor: grabbing;
+}
+
+.palette-placement-grid {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  padding: 18px;
+  pointer-events: none;
+}
+
+.palette-placement-cell {
+  margin: 6px;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.palette-placement-cell.is-preview {
+  border-color: var(--accent-primary);
+  background: var(--accent-glow);
+  box-shadow: inset 0 0 0 1px var(--accent-glow);
 }
 
 .search-input {

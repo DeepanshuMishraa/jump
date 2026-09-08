@@ -9,6 +9,11 @@ export type ColorTheme =
 export type ViewMode = "list" | "gallery";
 export type TabSwitchMode = "recent" | "order";
 
+export type PalettePosition = {
+  x: number;
+  y: number;
+};
+
 export type PinnedTab = {
   tabId: number;
   identity: string;
@@ -25,6 +30,7 @@ export type UserSettings = {
   disableMouseCommandPalette: boolean;
   tabSwitchMode: TabSwitchMode;
   pinnedTabs: PinnedTab[];
+  palettePosition: PalettePosition;
 };
 
 export type PaletteTab = {

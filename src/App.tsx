@@ -4,11 +4,11 @@ import { ArrowRightIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
-import { DEFAULT_SETTINGS, getStoredSettings, pinnedTabIdentity, subscribeToSettings } from "./settings";
+import { DEFAULT_SETTINGS, getStoredSettings, pinnedTabIdentity, saveStoredSettings, subscribeToSettings } from "./settings";
 import { useMountEffect } from "./hooks/useMountEffect";
 import { TabFavicon, TabSoundIndicator } from "./components/TabVisuals";
 import { GalleryCard, SwitcherCard } from "./components/TabCards";
-import type { BrowserMessage, PaletteTab, UserSettings } from "./types";
+import type { BrowserMessage, PalettePosition, PaletteTab, UserSettings } from "./types";
 
 export function App({
   onClose,
@@ -29,6 +29,17 @@ export function App({
   const [mode, setMode] = useState<"search" | "switcher">(initialMode);
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [currentPreviewUrl, setCurrentPreviewUrl] = useState(previewUrl);
+  const [isDraggingPalette, setIsDraggingPalette] = useState(false);
+  const [dragPosition, setDragPosition] = useState<PalettePosition | undefined>();
+  const [dragPreviewCell, setDragPreviewCell] = useState<{ column: number; row: number }>();
+  const paletteCardRef = useRef<HTMLDivElement>(null);
+  const paletteDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startPosition: PalettePosition;
+    moved: boolean;
+  } | undefined>(undefined);
 
   const isSwitcher = mode === "switcher";
   const isGallery = settings.viewMode === "gallery";
@@ -450,6 +461,64 @@ export function App({
   // By default, initially only shows the search input bar.
   // Expands only when user types or presses Down arrow.
   const showDropdown = isExpanded || Boolean(query.trim());
+  const visiblePalettePosition = dragPosition ?? settings.palettePosition;
+
+  const handlePalettePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.target instanceof HTMLInputElement || event.target instanceof HTMLButtonElement) return;
+    const position = settings.palettePosition;
+    paletteDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startPosition: position,
+      moved: false,
+    };
+    setDragPosition(position);
+    setDragPreviewCell({
+      column: Math.min(2, Math.max(0, Math.floor((event.clientX / window.innerWidth) * 3))),
+      row: Math.min(2, Math.max(0, Math.floor((event.clientY / window.innerHeight) * 3))),
+    });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setIsDraggingPalette(true);
+  };
+
+  const handlePalettePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = paletteDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) drag.moved = true;
+    const nextPosition = {
+      x: Math.min(1, Math.max(0, drag.startPosition.x + deltaX / window.innerWidth)),
+      y: Math.min(1, Math.max(0, drag.startPosition.y + deltaY / window.innerHeight)),
+    };
+    setDragPosition(nextPosition);
+    setDragPreviewCell({
+      column: Math.min(2, Math.max(0, Math.floor((event.clientX / window.innerWidth) * 3))),
+      row: Math.min(2, Math.max(0, Math.floor((event.clientY / window.innerHeight) * 3))),
+    });
+  };
+
+  const finishPaletteDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = paletteDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const card = paletteCardRef.current;
+    const column = Math.min(2, Math.max(0, Math.floor((event.clientX / window.innerWidth) * 3)));
+    const row = Math.min(2, Math.max(0, Math.floor((event.clientY / window.innerHeight) * 3)));
+    const width = card?.getBoundingClientRect().width ?? 640;
+    const height = card?.getBoundingClientRect().height ?? 54;
+    const x = Math.min(1 - width / (window.innerWidth * 2), Math.max(width / (window.innerWidth * 2), (column + 0.5) / 3));
+    const y = Math.min(1 - height / (window.innerHeight * 2), Math.max(height / (window.innerHeight * 2), (row + 0.5) / 3));
+    const nextPosition = { x, y };
+    paletteDragRef.current = undefined;
+    setIsDraggingPalette(false);
+    setDragPosition(undefined);
+    setDragPreviewCell(undefined);
+    if (drag.moved) {
+      setSettings((current) => ({ ...current, palettePosition: nextPosition }));
+      void saveStoredSettings({ palettePosition: nextPosition }).then(setSettings);
+    }
+  };
 
   return (
     <div
@@ -459,13 +528,31 @@ export function App({
         if (event.target === event.currentTarget) handleClose();
       }}
     >
+      {isDraggingPalette && (
+        <div className="palette-placement-grid" aria-hidden="true">
+          {Array.from({ length: 9 }, (_, index) => (
+            <div
+              key={index}
+              className={`palette-placement-cell ${dragPreviewCell?.column === index % 3 && dragPreviewCell?.row === Math.floor(index / 3) ? "is-preview" : ""}`}
+            />
+          ))}
+        </div>
+      )}
       <div
-        className={`palette-card ${showDropdown ? "is-expanded" : ""} ${isGallery && showDropdown ? "is-gallery-view" : ""} ${isClosing ? "is-closing" : ""}`}
+        ref={paletteCardRef}
+        className={`palette-card ${showDropdown ? "is-expanded" : ""} ${isGallery && showDropdown ? "is-gallery-view" : ""} ${isClosing ? "is-closing" : ""} ${isDraggingPalette ? "is-dragging" : ""}`}
+        style={{ left: `${visiblePalettePosition.x * 100}%`, top: `${visiblePalettePosition.y * 100}%` }}
         role="dialog"
         aria-modal="true"
       >
         {/* Elevated 3D Search Bar Input Row */}
-        <div className="search-bar-row">
+        <div
+          className="search-bar-row"
+          onPointerDown={handlePalettePointerDown}
+          onPointerMove={handlePalettePointerMove}
+          onPointerUp={finishPaletteDrag}
+          onPointerCancel={finishPaletteDrag}
+        >
           <SearchIcon size={17} className="search-lead-icon" />
           <input
             ref={inputRef}
