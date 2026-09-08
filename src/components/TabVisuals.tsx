@@ -28,14 +28,14 @@ export function TabSoundIndicator({
 
   const label = tab.muted ? "Unmute tab" : "Mute tab";
   const icon = tab.muted
-    ? <MuteIcon size={size} className="tab-audible-icon" />
-    : <SpeakerIcon size={size} className="tab-audible-icon" />;
+    ? <MuteIcon size={size} className="tab-audible-icon is-muted" />
+    : <SpeakerIcon size={size} className="tab-audible-icon is-playing" />;
   if (!onToggleMute) return icon;
 
   return (
     <button
       type="button"
-      className="tab-sound-button"
+      className={`tab-sound-button ${tab.muted ? "is-muted" : "is-playing"}`}
       aria-label={label}
       title={label}
       onMouseDown={(event) => event.preventDefault()}

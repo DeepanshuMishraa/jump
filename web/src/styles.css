@@ -98,57 +98,27 @@ button {
 }
 
 .brand-mark {
-  position: relative;
   width: 38px;
   aspect-ratio: 1;
-  display: grid;
-  place-items: center;
-  border: 1.5px solid var(--ink);
   border-radius: 9px;
-  background: var(--ink);
-  box-shadow: inset 0 0 0 2px var(--paper);
+  overflow: hidden;
+  flex: 0 0 auto;
+  transition: transform 0.36s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.brand-idle {
-  position: absolute;
-  width: 15px;
-  height: 3.5px;
-  border-radius: 99px;
-  background: var(--acid);
-  transition: opacity 0.18s ease, transform 0.36s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.brand-reveal {
-  position: absolute;
-  width: 17px;
-  height: 17px;
-  display: grid;
-  place-items: center;
-  opacity: 0;
-  transform: scale(0.65);
-  transition: opacity 0.18s ease, transform 0.36s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.brand-reveal svg {
+.brand-mark svg {
   width: 100%;
   height: 100%;
-  fill: none;
-  stroke: var(--acid);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  display: block;
 }
 
-.brand:focus-visible .brand-idle,
-.brand:hover .brand-idle {
-  opacity: 0;
-  transform: scaleX(0.35);
+.brand-mark-cut {
+  fill: var(--paper);
 }
 
-.brand:focus-visible .brand-reveal,
-.brand:hover .brand-reveal {
-  opacity: 1;
-  transform: scale(1);
+.brand:hover .brand-mark,
+.brand:focus-visible .brand-mark {
+  transform: translateY(-1px) rotate(-3deg);
 }
 
 .version {
@@ -1153,8 +1123,7 @@ h1 .hero-highlight:after {
   .nav-link,
   .social-links a,
   .source-button,
-  .brand-idle,
-  .brand-reveal,
+  .brand-mark,
   .download-label,
   .download-leading,
   .download-trailing {

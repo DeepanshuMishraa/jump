@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#292524"/>
+  <path d="M0 504h1200" stroke="#fff0df" stroke-opacity=".12"/>
+  <path d="M840 0v630M960 0v630M1080 0v630" stroke="#fff0df" stroke-opacity=".05"/>
+  <g transform="translate(84 72)">
+    <rect width="64" height="64" rx="17" fill="#d9ff54"/>
+    <path d="M19 15h28v7H27v20.3c0 1.93 1.57 3.5 3.5 3.5H39v7h-9.1A10.5 10.5 0 0 1 19 42.3V15Z" fill="#292524"/>
+    <path d="M19 28h8v7h-8zM43 43h7v7h-7z" fill="#fff0df"/>
+  </g>
+  <text x="172" y="113" fill="#fff0df" font-family="Geist Mono" font-size="28" font-weight="600">JUMP</text>
+  <text x="84" y="280" fill="#fff0df" font-family="Geist Mono" font-size="84" font-weight="500">Switch tabs.</text>
+  <text x="84" y="375" fill="#d9ff54" font-family="Geist Mono" font-size="84" font-weight="500">Stay in flow.</text>
+  <path d="M86 408h496" stroke="#d9ff54" stroke-width="5"/>
+  <text x="84" y="558" fill="#fff0df" fill-opacity=".7" font-family="Geist Mono" font-size="19" font-weight="500">FAST  /  PRIVATE  /  KEYBOARD-FIRST</text>
+  <text x="1116" y="558" fill="#fff0df" fill-opacity=".45" text-anchor="end" font-family="Geist Mono" font-size="19" font-weight="400">JUMP.APP</text>
+  <g transform="translate(881 151)" opacity=".08">
+    <rect width="220" height="220" rx="48" fill="none" stroke="#fff0df" stroke-width="10"/>
+    <path d="M63 50h94v24h-70v68.3c0 6.63 5.37 12 12 12h38v24h-31.1A36 36 0 0 1 70 142.3V50Z" fill="#d9ff54"/>
+  </g>
+</svg>

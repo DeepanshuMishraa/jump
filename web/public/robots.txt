@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://tanstack-start-app.d4deepanshu723.workers.dev/sitemap.xml

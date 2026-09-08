@@ -1,4 +1,4 @@
-import type { ColorTheme, PinnedTab, TabSwitchMode, UserSettings, ViewMode } from "./types";
+import type { ColorTheme, PalettePosition, PinnedTab, TabSwitchMode, UserSettings, ViewMode } from "./types";
 
 export const DEFAULT_SETTINGS: UserSettings = {
   viewMode: "list",
@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   disableMouseCommandPalette: false,
   tabSwitchMode: "recent",
   pinnedTabs: [],
+  palettePosition: { x: 0.5, y: 0.28 },
 };
 
 export type ThemeInfo = {
@@ -28,7 +29,7 @@ export const THEMES: ThemeInfo[] = [
     text: "#ffffff",
   },
   {
-    id: "catppuccin",
+    id: "catppuccin-mocha",
     name: "Catppuccin",
     badge: "Mocha",
     bg: "#1e1e2e",
@@ -36,12 +37,68 @@ export const THEMES: ThemeInfo[] = [
     text: "#cdd6f4",
   },
   {
-    id: "rose-pine",
+    id: "rose-pine-main",
     name: "Rosé Pine",
-    badge: "Moon",
+    badge: "Main",
     bg: "#191724",
     accent: "#ebbcba",
     text: "#e0def4",
+  },
+  {
+    id: "catppuccin-latte",
+    name: "Catppuccin",
+    badge: "Latte",
+    bg: "#eff1f5",
+    accent: "#8839ef",
+    text: "#4c4f69",
+  },
+  {
+    id: "catppuccin-frappe",
+    name: "Catppuccin",
+    badge: "Frappé",
+    bg: "#303446",
+    accent: "#ca9ee6",
+    text: "#c6d0f5",
+  },
+  {
+    id: "catppuccin-macchiato",
+    name: "Catppuccin",
+    badge: "Macchiato",
+    bg: "#24273a",
+    accent: "#c6a0f6",
+    text: "#cad3f5",
+  },
+  {
+    id: "rose-pine-dawn",
+    name: "Rosé Pine",
+    badge: "Dawn",
+    bg: "#faf4ed",
+    accent: "#d7827e",
+    text: "#575279",
+  },
+  {
+    id: "rose-pine-moon",
+    name: "Rosé Pine",
+    badge: "Moon",
+    bg: "#232136",
+    accent: "#ea9a97",
+    text: "#e0def4",
+  },
+  {
+    id: "vesper",
+    name: "Vesper",
+    badge: "Peppermint",
+    bg: "#101010",
+    accent: "#ffc799",
+    text: "#ffffff",
+  },
+  {
+    id: "gruvbox-light",
+    name: "Gruvbox",
+    badge: "Light",
+    bg: "#fbf1c7",
+    accent: "#af3a03",
+    text: "#3c3836",
   },
   {
     id: "tokyo-night",
@@ -55,14 +112,14 @@ export const THEMES: ThemeInfo[] = [
     id: "nord",
     name: "Nord",
     badge: "Arctic",
-    bg: "#242933",
+    bg: "#2e3440",
     accent: "#88c0d0",
     text: "#eceff4",
   },
   {
-    id: "gruvbox",
+    id: "gruvbox-dark",
     name: "Gruvbox",
-    badge: "Retro",
+    badge: "Dark",
     bg: "#282828",
     accent: "#fe8019",
     text: "#ebdbb2",
@@ -81,8 +138,18 @@ function isViewMode(value: unknown): value is ViewMode {
 }
 
 function isColorTheme(value: unknown): value is ColorTheme {
-  return value === "default" || value === "catppuccin" || value === "rose-pine" ||
-    value === "tokyo-night" || value === "nord" || value === "gruvbox";
+  return value === "default" || value === "catppuccin-latte" || value === "catppuccin-frappe" ||
+    value === "catppuccin-macchiato" || value === "catppuccin-mocha" || value === "rose-pine-dawn" ||
+    value === "rose-pine-main" || value === "rose-pine-moon" || value === "tokyo-night" ||
+    value === "nord" || value === "vesper" || value === "gruvbox-dark" || value === "gruvbox-light";
+}
+
+function parseColorTheme(value: unknown): ColorTheme {
+  if (isColorTheme(value)) return value;
+  if (value === "catppuccin") return "catppuccin-mocha";
+  if (value === "rose-pine") return "rose-pine-main";
+  if (value === "gruvbox") return "gruvbox-dark";
+  return DEFAULT_SETTINGS.theme;
 }
 
 function isTabSwitchMode(value: unknown): value is TabSwitchMode {
@@ -91,6 +158,16 @@ function isTabSwitchMode(value: unknown): value is TabSwitchMode {
 
 function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean";
+}
+
+function parsePalettePosition(value: unknown): PalettePosition {
+  if (typeof value !== "object" || value === null || !("x" in value) || !("y" in value)) {
+    return DEFAULT_SETTINGS.palettePosition;
+  }
+  const { x, y } = value;
+  return typeof x === "number" && Number.isFinite(x) && typeof y === "number" && Number.isFinite(y)
+    ? { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) }
+    : DEFAULT_SETTINGS.palettePosition;
 }
 
 function parsePinnedTabs(value: unknown): PinnedTab[] {
@@ -143,7 +220,7 @@ function parseLegacyPinnedTabs(value: unknown): PinnedTab[] {
 export function parseStoredSettings(value: unknown): UserSettings {
   if (typeof value !== "object" || value === null) return DEFAULT_SETTINGS;
   const viewMode = "viewMode" in value && isViewMode(value.viewMode) ? value.viewMode : DEFAULT_SETTINGS.viewMode;
-  const theme = "theme" in value && isColorTheme(value.theme) ? value.theme : DEFAULT_SETTINGS.theme;
+  const theme = "theme" in value ? parseColorTheme(value.theme) : DEFAULT_SETTINGS.theme;
   const disableMouseTabSwitcher = "disableMouseTabSwitcher" in value && isBoolean(value.disableMouseTabSwitcher)
     ? value.disableMouseTabSwitcher
     : DEFAULT_SETTINGS.disableMouseTabSwitcher;
@@ -158,7 +235,8 @@ export function parseStoredSettings(value: unknown): UserSettings {
     : "pinnedTabIds" in value
       ? parseLegacyPinnedTabs(value.pinnedTabIds)
       : DEFAULT_SETTINGS.pinnedTabs;
-  return { viewMode, theme, disableMouseTabSwitcher, disableMouseCommandPalette, tabSwitchMode, pinnedTabs };
+  const palettePosition = "palettePosition" in value ? parsePalettePosition(value.palettePosition) : DEFAULT_SETTINGS.palettePosition;
+  return { viewMode, theme, disableMouseTabSwitcher, disableMouseCommandPalette, tabSwitchMode, pinnedTabs, palettePosition };
 }
 
 function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
@@ -179,6 +257,7 @@ function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
     ...( "pinnedTabIds" in value && Array.isArray(value.pinnedTabIds)
       ? { pinnedTabs: parseLegacyPinnedTabs(value.pinnedTabIds) }
       : {}),
+    ...( "palettePosition" in value ? { palettePosition: parsePalettePosition(value.palettePosition) } : {}),
   };
 }
 
@@ -217,6 +296,7 @@ async function readChromeLocalSettings() {
     "tabSwitchMode",
     "pinnedTabs",
     "pinnedTabIds",
+    "palettePosition",
   ]);
   return parseStoredSettings(stored);
 }
@@ -244,6 +324,7 @@ export async function getStoredSettings(): Promise<UserSettings> {
         "tabSwitchMode",
         "pinnedTabs",
         "pinnedTabIds",
+        "palettePosition",
       ]));
       selectedBackend = "sync";
       return settings;

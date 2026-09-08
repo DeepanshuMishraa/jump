@@ -38,12 +38,10 @@ function ChromeStoreLogo({ className = "" }: { className?: string }) {
 function BrandMark() {
 	return (
 		<span className="brand-mark" aria-hidden="true">
-			<span className="brand-idle" />
-			<span className="brand-reveal">
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path d="M7 17L17 7M17 7H9M17 7V15" />
-				</svg>
-			</span>
+			<svg viewBox="0 0 48 48" aria-hidden="true">
+				<path d="M14 11h20v5H20v14.5c0 1.38 1.12 2.5 2.5 2.5H28v5h-6.5A7.5 7.5 0 0 1 14 30.5V11Z" />
+				<path d="M14 20h6v5h-6zM31 31h5v5h-5z" className="brand-mark-cut" />
+			</svg>
 		</span>
 	);
 }
@@ -148,7 +146,7 @@ function Home() {
 					<a className="brand" href="/" aria-label="Jump home">
 						<BrandMark />
 						<span className="brand-name">Jump</span>
-						<span className="version">v0.1.5</span>
+						<span className="version">v0.1.6</span>
 					</a>
 
 					<div className="nav-side">
@@ -175,7 +173,7 @@ function Home() {
 				<section className="hero-copy" id="top">
 					<div className="hero-proof">
 						<span className="hero-proof-dot" />
-						<span>Used by 700+ people</span>
+						<span>Used by 1.1k people</span>
 					</div>
 
 					<h1>
