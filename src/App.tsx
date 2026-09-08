@@ -432,7 +432,11 @@ export function App({
         }}
       >
         <div className={`switcher-hud ${isClosing ? "is-closing" : ""}`} role="dialog" aria-label="Tab Switcher">
-          <div className="switcher-track" ref={trackRef} role="listbox">
+          <div
+            className={`switcher-track ${tabs.length <= 3 ? "is-centered" : ""}`}
+            ref={trackRef}
+            role="listbox"
+          >
             {tabs.length === 0 ? (
               <div className="empty-state">
                 <span>No open tabs</span>

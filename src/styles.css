@@ -288,7 +288,7 @@ button {
 
 .switcher-hud {
   position: relative;
-  width: auto;
+  width: min(94vw, 1140px);
   max-width: min(94vw, 1140px);
   background: var(--bg-hud);
   backdrop-filter: blur(48px) saturate(200%);
@@ -321,6 +321,10 @@ button {
   scroll-snap-type: x proximity;
   scroll-padding-inline: 6px;
   overscroll-behavior-x: contain;
+}
+
+.switcher-track.is-centered {
+  justify-content: center;
 }
 
 .switcher-track::-webkit-scrollbar {
