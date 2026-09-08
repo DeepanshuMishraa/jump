@@ -335,7 +335,7 @@ button {
   display: none;
 }
 
-/* Elevated 3D Switcher Card */
+/* Elevated Switcher Card */
 .switcher-card {
   width: 250px;
   flex-shrink: 0;
@@ -343,40 +343,33 @@ button {
   align-self: center;
   padding: 10px 10px 12px;
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.015) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  box-shadow: none;
   cursor: pointer;
   user-select: none;
-  opacity: 0.55;
+  opacity: 0.6;
   transform: scale(0.96);
   transition:
     transform 180ms cubic-bezier(0.16, 1, 0.3, 1),
     opacity 180ms cubic-bezier(0.16, 1, 0.3, 1),
-    background 160ms ease,
-    border-color 160ms ease,
-    box-shadow 180ms ease;
+    background-color 160ms ease,
+    border-color 160ms ease;
 }
 
 .switcher-card:hover {
-  opacity: 0.85;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.025) 100%);
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  opacity: 0.9;
+  background: var(--bg-card-hover);
+  border-color: var(--border-selected);
+  box-shadow: none;
 }
 
 .switcher-card.is-selected {
   opacity: 1;
   transform: scale(1.03) translateY(-3px);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
+  background: var(--bg-selected);
   border-color: var(--border-selected);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.32),
-    0 0 0 1px var(--accent-glow),
-    0 4px 16px -2px var(--accent-glow);
+  box-shadow: none;
 }
 
 .switcher-card:active {
@@ -389,11 +382,9 @@ button {
   height: 152px;
   border-radius: 12px;
   overflow: hidden;
-  background: #000000;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 2px 6px rgba(0, 0, 0, 0.4);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-card);
+  box-shadow: none;
 }
 
 .switcher-thumbnail-image {
@@ -412,7 +403,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+  background: var(--bg-card);
   color: var(--text-secondary);
 }
 
@@ -420,7 +411,6 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.6));
 }
 
 .switcher-placeholder-domain {
@@ -434,7 +424,7 @@ button {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, transparent 40%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, transparent 40%);
 }
 
 .switcher-card-footer {
@@ -520,6 +510,11 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: color 120ms ease;
+}
+
+.palette-card:focus-within .search-lead-icon {
+  color: var(--accent-primary);
 }
 
 .palette-card.is-dragging .search-bar-row {
@@ -539,9 +534,9 @@ button {
 
 .palette-placement-cell {
   margin: 6px;
-  border: 1px dashed rgba(255, 255, 255, 0.28);
+  border: 1px dashed var(--border-panel);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.025);
+  background: var(--bg-card);
   transition: background 120ms ease, border-color 120ms ease;
 }
 
@@ -579,7 +574,7 @@ button {
   width: 26px;
   height: 26px;
   border-radius: 7px;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--text-muted);
   transition:
     transform 160ms cubic-bezier(0.32, 0.72, 0, 1),
     background 120ms ease,
@@ -601,7 +596,7 @@ button {
 /* Divider Between Bar and List */
 .palette-divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--divider);
   margin: 0;
 }
 
@@ -643,12 +638,12 @@ button {
 }
 
 .list-row:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--bg-card-hover);
 }
 
 .list-row.selected {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: var(--bg-selected);
+  border-color: var(--border-selected);
 }
 
 .list-row:not(.selected) .list-row-action {
@@ -726,7 +721,7 @@ button {
   gap: 8px;
   flex-shrink: 0;
   align-self: center;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--text-muted);
   font-size: 13px;
   font-weight: 500;
 }
@@ -744,7 +739,7 @@ button {
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--text-muted);
   transition: all 120ms ease;
 }
 
@@ -758,9 +753,9 @@ button {
 }
 
 .list-row.selected .action-arrow-badge {
-  background: #ffffff;
-  color: #18181b;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  background: var(--accent-primary);
+  color: var(--bg-canvas);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
 
 .action-icon-badge {
@@ -770,8 +765,8 @@ button {
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.7);
+  background: var(--bg-card);
+  color: var(--accent-primary);
 }
 
 .palette-action-row {
@@ -802,39 +797,29 @@ button {
   flex-direction: column;
   padding: 10px;
   border-radius: 14px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07) 0%, rgba(255, 255, 255, 0.02) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow:
-    0 4px 14px -2px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.14),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  box-shadow: none;
   cursor: pointer;
   user-select: none;
   transition:
     transform 160ms cubic-bezier(0.16, 1, 0.3, 1),
     background 140ms ease,
-    border-color 140ms ease,
-    box-shadow 160ms ease;
+    border-color 140ms ease;
 }
 
 .gallery-card:hover {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%);
-  border-color: rgba(255, 255, 255, 0.18);
+  background: var(--bg-card-hover);
+  border-color: var(--border-selected);
   transform: translateY(-2px);
-  box-shadow:
-    0 8px 22px -3px rgba(0, 0, 0, 0.6),
-    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: none;
 }
 
 .gallery-card.selected {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.05) 100%);
+  background: var(--bg-selected);
   border-color: var(--border-selected);
   transform: translateY(-3px) scale(1.015);
-  box-shadow:
-    0 18px 40px -6px rgba(0, 0, 0, 0.85),
-    0 4px 12px rgba(0, 0, 0, 0.4),
-    inset 0 1px 0 rgba(255, 255, 255, 0.32),
-    0 0 0 1px var(--accent-glow);
+  box-shadow: none;
 }
 
 .gallery-card:active {
@@ -847,11 +832,9 @@ button {
   aspect-ratio: 16 / 10;
   border-radius: 10px;
   overflow: hidden;
-  background: #000000;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 2px 8px rgba(0, 0, 0, 0.4);
+  background: var(--bg-canvas);
+  border: 1px solid var(--border-card);
+  box-shadow: none;
 }
 
 .gallery-thumbnail-image {
@@ -870,7 +853,7 @@ button {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+  background: var(--bg-card);
 }
 
 .gallery-placeholder-domain {
@@ -1066,10 +1049,10 @@ kbd {
   flex-shrink: 0;
   align-self: center;
   border-radius: 8px;
-  color: var(--text-primary);
+  color: var(--accent-primary);
   background: var(--bg-card);
   border: 1px solid var(--border-card);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.15);
 }
 
 .popup-brand-text {
@@ -1469,48 +1452,39 @@ kbd {
   }
 
   .palette-backdrop[data-theme="default"] .gallery-card {
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.015) 100%);
-    border-color: rgba(0, 0, 0, 0.1);
-    box-shadow:
-      0 4px 14px -2px rgba(0, 0, 0, 0.16),
-      inset 0 1px 0 rgba(255, 255, 255, 0.8),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+    background: var(--bg-card);
+    border-color: var(--border-card);
+    box-shadow: none;
   }
 
   .palette-backdrop[data-theme="default"] .switcher-card {
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.015) 100%);
-    border-color: rgba(0, 0, 0, 0.1);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.8),
-      inset 0 -1px 0 rgba(0, 0, 0, 0.04);
+    background: var(--bg-card);
+    border-color: var(--border-card);
+    box-shadow: none;
   }
 
   .palette-backdrop[data-theme="default"] .gallery-card:hover {
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.07) 0%, rgba(0, 0, 0, 0.025) 100%);
-    border-color: rgba(0, 0, 0, 0.16);
+    background: var(--bg-card-hover);
+    border-color: var(--border-selected);
+    box-shadow: none;
   }
 
   .palette-backdrop[data-theme="default"] .switcher-card:hover {
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.07) 0%, rgba(0, 0, 0, 0.025) 100%);
-    border-color: rgba(0, 0, 0, 0.16);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    background: var(--bg-card-hover);
+    border-color: var(--border-selected);
+    box-shadow: none;
   }
 
   .palette-backdrop[data-theme="default"] .gallery-card.selected {
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.04) 100%);
-    box-shadow:
-      0 18px 40px -6px rgba(0, 0, 0, 0.22),
-      inset 0 1px 0 rgba(255, 255, 255, 0.9),
-      0 0 0 1px var(--accent-glow);
+    background: var(--bg-selected);
+    border-color: var(--border-selected);
+    box-shadow: none;
   }
 
   .palette-backdrop[data-theme="default"] .switcher-card.is-selected {
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.1) 0%, rgba(0, 0, 0, 0.04) 100%);
+    background: var(--bg-selected);
     border-color: var(--border-selected);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.9),
-      0 0 0 1px var(--accent-glow),
-      0 4px 16px -2px var(--accent-glow);
+    box-shadow: none;
   }
 
   .palette-backdrop[data-theme="default"] .search-bar-row {
@@ -1590,13 +1564,30 @@ kbd {
   padding: 0;
   border: 0;
   border-radius: 6px;
-  color: var(--text-secondary);
+  color: var(--accent-primary);
   background: transparent;
   cursor: pointer;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+
+.tab-sound-button.is-muted,
+.tab-audible-icon.is-muted {
+  color: var(--text-muted);
+}
+
+.tab-sound-button.is-playing,
+.tab-audible-icon.is-playing {
+  color: var(--accent-primary);
 }
 
 .tab-sound-button:hover,
 .tab-sound-button:focus-visible {
+  color: var(--accent-primary);
+  background: var(--bg-card-hover);
+}
+
+.tab-sound-button.is-muted:hover,
+.tab-sound-button.is-muted:focus-visible {
   color: var(--text-primary);
   background: var(--bg-card-hover);
 }
@@ -1604,7 +1595,7 @@ kbd {
 .tab-audible-icon {
   flex-shrink: 0;
   align-self: center;
-  color: currentColor;
+  color: var(--accent-primary);
 }
 
 }
