@@ -4,69 +4,115 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 
 import appCss from "../styles.css?url";
 
+const siteUrl = "https://tanstack-start-app.d4deepanshu723.workers.dev";
+const siteTitle = "Jump: Fast Chrome Tab Switcher & Command Palette";
+const siteDescription =
+	"Jump is a fast, private Chrome tab switcher with visual previews and fuzzy search. Switch open tabs instantly from your keyboard and stay in flow.";
+const ogImageUrl = `${siteUrl}/og-image.jpg`;
+
+const structuredData = {
+	"@context": "https://schema.org",
+	"@graph": [
+		{
+			"@type": "WebSite",
+			"@id": `${siteUrl}/#website`,
+			url: siteUrl,
+			name: "Jump",
+			description: siteDescription,
+			inLanguage: "en",
+		},
+		{
+			"@type": "SoftwareApplication",
+			"@id": `${siteUrl}/#software`,
+			name: "Jump",
+			description: siteDescription,
+			url: siteUrl,
+			image: ogImageUrl,
+			applicationCategory: "BrowserApplication",
+			operatingSystem: "ChromeOS, macOS, Windows, Linux",
+			browserRequirements: "Requires a Chromium-based browser",
+			softwareVersion: "0.1.5",
+			featureList: [
+				"Visual tab switcher",
+				"Fuzzy tab search",
+				"Keyboard-first tab actions",
+				"Private and offline operation",
+			],
+			offers: {
+				"@type": "Offer",
+				price: 0,
+				priceCurrency: "USD",
+				availability: "https://schema.org/InStock",
+			},
+			author: {
+				"@type": "Person",
+				name: "Deepanshu Mishra",
+				url: "https://linkedin.com/in/deepanshum",
+				sameAs: [
+					"https://github.com/DeepanshuMishraa",
+					"https://x.com/dipxsyy",
+				],
+			},
+		},
+	],
+};
+
 export const Route = createRootRoute({
 	head: () => ({
 		meta: [
-			{
-				charSet: "utf-8",
-			},
+			{ charSet: "utf-8" },
 			{
 				name: "viewport",
 				content: "width=device-width, initial-scale=1",
 			},
+			{ title: siteTitle },
+			{ name: "description", content: siteDescription },
 			{
-				title: "Jump — Switch tabs at the speed of thought",
-			},
-			{
-				name: "description",
+				name: "robots",
 				content:
-					"A keyboard-first Chromium extension with a blazing visual switcher and fuzzy search command palette. Switch tabs instantly and stay in flow.",
+					"index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1",
 			},
+			{ name: "theme-color", content: "#fff0df" },
+			{ name: "application-name", content: "Jump" },
+			{ property: "og:site_name", content: "Jump" },
+			{ property: "og:title", content: siteTitle },
+			{ property: "og:description", content: siteDescription },
+			{ property: "og:type", content: "website" },
+			{ property: "og:url", content: siteUrl },
+			{ property: "og:locale", content: "en_US" },
+			{ property: "og:image", content: ogImageUrl },
+			{ property: "og:image:secure_url", content: ogImageUrl },
+			{ property: "og:image:type", content: "image/jpeg" },
+			{ property: "og:image:width", content: "1200" },
+			{ property: "og:image:height", content: "630" },
 			{
-				name: "theme-color",
-				content: "#fff0df",
+				property: "og:image:alt",
+				content: "Jump — a fast, private Chrome tab switcher",
 			},
+			{ name: "twitter:card", content: "summary_large_image" },
+			{ name: "twitter:title", content: siteTitle },
+			{ name: "twitter:description", content: siteDescription },
+			{ name: "twitter:image", content: ogImageUrl },
 			{
-				property: "og:title",
-				content: "Jump — Switch tabs at the speed of thought",
+				name: "twitter:image:alt",
+				content: "Jump — a fast, private Chrome tab switcher",
 			},
-			{
-				property: "og:description",
-				content:
-					"A keyboard-first Chromium extension with a blazing visual switcher and fuzzy search command palette. Switch tabs instantly and stay in flow.",
-			},
-			{
-				property: "og:type",
-				content: "website",
-			},
-			{
-				name: "twitter:card",
-				content: "summary_large_image",
-			},
-			{
-				name: "twitter:title",
-				content: "Jump — Switch tabs at the speed of thought",
-			},
-			{
-				name: "twitter:description",
-				content:
-					"A keyboard-first Chromium extension with a blazing visual switcher and fuzzy search command palette. Switch tabs instantly and stay in flow.",
-			},
+			{ name: "twitter:site", content: "@dipxsyy" },
 		],
 		links: [
+			{ rel: "canonical", href: siteUrl },
 			{
 				rel: "icon",
 				type: "image/svg+xml",
 				href: "/icon.svg",
 			},
+			{ rel: "icon", type: "image/png", sizes: "32x32", href: "/icon-32.png" },
 			{
 				rel: "apple-touch-icon",
-				href: "/icon.svg",
+				sizes: "180x180",
+				href: "/apple-touch-icon.png",
 			},
-			{
-				rel: "stylesheet",
-				href: appCss,
-			},
+			{ rel: "stylesheet", href: appCss },
 		],
 	}),
 	shellComponent: RootDocument,
@@ -80,6 +126,9 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 			</head>
 			<body>
 				{children}
+				<script type="application/ld+json">
+					{JSON.stringify(structuredData)}
+				</script>
 				<TanStackDevtools
 					config={{
 						position: "bottom-right",
