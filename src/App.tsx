@@ -49,7 +49,6 @@ export function App({
   const handleCloseRef = useRef<() => void>(() => undefined);
   tabsRef.current = tabs;
   modeRef.current = mode;
-  selectedIndexRef.current = selectedIndex;
   const tabsRequestIdRef = useRef(0);
 
   // Load and subscribe to persistent settings
@@ -331,9 +330,21 @@ export function App({
   // Keep the latest result set available to the external message listener without syncing state.
   resultsRef.current = results;
   useLayoutEffect(() => {
-    setSelectedIndex((index) => Math.min(index, Math.max(0, results.length - 1)));
-  }, [results.length]);
-  const activeIndex = Math.min(selectedIndex, Math.max(0, results.length - 1));
+    const itemCount = isSwitcher ? tabs.length : results.length;
+    setSelectedIndex((index) => Math.min(index, Math.max(0, itemCount - 1)));
+  }, [isSwitcher, results.length, tabs.length]);
+  const activeIndex = isSwitcher
+    ? Math.min(selectedIndex, Math.max(0, tabs.length - 1))
+    : Math.min(selectedIndex, Math.max(0, results.length - 1));
+  selectedIndexRef.current = activeIndex;
+
+  useLayoutEffect(() => {
+    if (!isSwitcher || tabs.length === 0) return;
+    const selectedCard = trackRef.current?.querySelector<HTMLElement>(
+      `[data-switcher-index="${activeIndex}"]`,
+    );
+    selectedCard?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [activeIndex, isSwitcher, tabs.length]);
 
   const autocompleteFocusedSuggestion = useCallback(() => {
     const result = results[activeIndex];
