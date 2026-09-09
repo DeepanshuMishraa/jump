@@ -549,60 +549,6 @@ export function App({
 
   const visiblePalettePosition = dragPosition ?? settings.palettePosition;
 
-  if (isBookmarks) {
-    return (
-      <BookmarkManager
-        theme={settings.theme}
-        useVibrancy={settings.useVibrancy}
-        disableMouse={settings.disableMouseCommandPalette}
-        position={visiblePalettePosition}
-        isClosing={isClosing}
-        onClose={handleClose}
-      />
-    );
-  }
-
-  // Visual Horizontal Switcher Mode (Alt + Q)
-  if (isSwitcher) {
-    return (
-      <div
-        className={`palette-backdrop switcher-backdrop ${isClosing ? "is-closing" : ""}`}
-        data-theme={settings.theme}
-        data-vibrancy={settings.useVibrancy ? "on" : "off"}
-        onMouseDown={(event) => {
-          if (event.target === event.currentTarget) handleClose();
-        }}
-      >
-        <div className={`switcher-hud ${isClosing ? "is-closing" : ""}`} role="dialog" aria-label="Tab Switcher">
-          <div
-            className={`switcher-track ${tabs.length <= 3 ? "is-centered" : ""}`}
-            ref={trackRef}
-            role="listbox"
-          >
-            {tabs.length === 0 ? (
-              <div className="empty-state">
-                <span>No open tabs</span>
-              </div>
-            ) : (
-              tabs.map((tab, index) => (
-                <SwitcherCard
-                  key={`switcher-${tab.windowId}-${tab.id}`}
-                  tab={tab}
-                  index={index}
-                  isSelected={index === activeIndex}
-                  previewUrl={previewUrls[String(tab.id)]}
-                  onClick={settings.disableMouseTabSwitcher ? undefined : () => void switchTab(tab)}
-                  onMouseEnter={settings.disableMouseTabSwitcher ? undefined : () => setSelectedIndex(index)}
-                  onToggleMute={settings.disableMouseTabSwitcher ? undefined : () => void muteTab(tab)}
-                />
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   // Minimal Search Mode (Command + Shift + P)
   // By default, initially only shows the search input bar.
   // Expands only when user types or presses Down arrow.
@@ -788,6 +734,60 @@ export function App({
   const cancelPaletteDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     cancelPaletteDragAt(event.pointerId);
   };
+
+  if (isBookmarks) {
+    return (
+      <BookmarkManager
+        theme={settings.theme}
+        useVibrancy={settings.useVibrancy}
+        disableMouse={settings.disableMouseBookmarks}
+        position={visiblePalettePosition}
+        isClosing={isClosing}
+        onClose={handleClose}
+      />
+    );
+  }
+
+  // Visual Horizontal Switcher Mode (Alt + Q)
+  if (isSwitcher) {
+    return (
+      <div
+        className={`palette-backdrop switcher-backdrop ${isClosing ? "is-closing" : ""}`}
+        data-theme={settings.theme}
+        data-vibrancy={settings.useVibrancy ? "on" : "off"}
+        onMouseDown={(event) => {
+          if (event.target === event.currentTarget) handleClose();
+        }}
+      >
+        <div className={`switcher-hud ${isClosing ? "is-closing" : ""}`} role="dialog" aria-label="Tab Switcher">
+          <div
+            className={`switcher-track ${tabs.length <= 3 ? "is-centered" : ""}`}
+            ref={trackRef}
+            role="listbox"
+          >
+            {tabs.length === 0 ? (
+              <div className="empty-state">
+                <span>No open tabs</span>
+              </div>
+            ) : (
+              tabs.map((tab, index) => (
+                <SwitcherCard
+                  key={`switcher-${tab.windowId}-${tab.id}`}
+                  tab={tab}
+                  index={index}
+                  isSelected={index === activeIndex}
+                  previewUrl={previewUrls[String(tab.id)]}
+                  onClick={settings.disableMouseTabSwitcher ? undefined : () => void switchTab(tab)}
+                  onMouseEnter={settings.disableMouseTabSwitcher ? undefined : () => setSelectedIndex(index)}
+                  onToggleMute={settings.disableMouseTabSwitcher ? undefined : () => void muteTab(tab)}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

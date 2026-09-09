@@ -195,6 +195,14 @@ export function Popup() {
             onChange={(event) => void updateSetting("disableMouseCommandPalette", event.target.checked)}
           />
         </label>
+        <label className="popup-toggle-row">
+          <span>Bookmarks</span>
+          <input
+            type="checkbox"
+            checked={settings.disableMouseBookmarks}
+            onChange={(event) => void updateSetting("disableMouseBookmarks", event.target.checked)}
+          />
+        </label>
       </section>
 
       <section className="popup-shortcuts" aria-label="Keyboard shortcuts">

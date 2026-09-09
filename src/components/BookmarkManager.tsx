@@ -2,6 +2,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { getBookmarks, openBookmark } from "../browser";
 import { BookmarkIcon, FolderIcon, GlobeIcon, SearchIcon, XIcon } from "../icons";
 import { useMountEffect } from "../hooks/useMountEffect";
+import { dragPreviewCellForPoint, isAltModifierActive, nextFreeDragPosition, snapPalettePosition } from "../paletteDrag";
+import { saveStoredSettings } from "../settings";
 import type { BookmarkItem, ColorTheme, PalettePosition } from "../types";
 
 function getDisplayDomain(url: string): string {
@@ -54,6 +56,14 @@ export function BookmarkManager({
   const [query, setQuery] = useState("");
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [dragPosition, setDragPosition] = useState<PalettePosition>();
+  const [dragPreviewCell, setDragPreviewCell] = useState<{ column: number; row: number }>();
+  const cardRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; startPosition: PalettePosition; moved: boolean } | undefined>(undefined);
+  const positionRef = useRef(position);
+  const disableMouseRef = useRef(disableMouse);
+  positionRef.current = position;
+  disableMouseRef.current = disableMouse;
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -128,6 +138,76 @@ export function BookmarkManager({
     [folderTabs, selectedFolder],
   );
 
+  const startDrag = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (disableMouseRef.current || event.button !== 0 || !isAltModifierActive(event)) return;
+    event.preventDefault();
+    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, startPosition: positionRef.current, moved: false };
+    setDragPosition(positionRef.current);
+    setDragPreviewCell(dragPreviewCellForPoint({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }));
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* best effort */ }
+  }, []);
+
+  const updateDrag = useCallback((event: PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (Math.abs(event.clientX - drag.startX) > 3 || Math.abs(event.clientY - drag.startY) > 3) drag.moved = true;
+    setDragPosition(nextFreeDragPosition({
+      startX: drag.startX, startY: drag.startY, startPosition: drag.startPosition,
+      clientX: event.clientX, clientY: event.clientY,
+      viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
+    }));
+    setDragPreviewCell(dragPreviewCellForPoint({
+      clientX: event.clientX,
+      clientY: event.clientY,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }));
+  }, []);
+
+  const finishDrag = useCallback((event: PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const card = cardRef.current;
+    const rect = card?.getBoundingClientRect();
+    const nextPosition = snapPalettePosition({
+      ...dragPreviewCellForPoint({
+        clientX: event.clientX, clientY: event.clientY,
+        viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
+      }),
+      viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
+      cardWidth: rect?.width ?? 640, cardHeight: rect?.height ?? 320,
+    });
+    dragRef.current = undefined;
+    setDragPosition(undefined);
+    setDragPreviewCell(undefined);
+    if (drag.moved) void saveStoredSettings({ palettePosition: nextPosition });
+  }, []);
+
+  useMountEffect(() => {
+    const move = (event: PointerEvent) => updateDrag(event);
+    const up = (event: PointerEvent) => finishDrag(event);
+    const cancel = () => {
+      dragRef.current = undefined;
+      setDragPosition(undefined);
+      setDragPreviewCell(undefined);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("blur", cancel);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("blur", cancel);
+    };
+  });
+
   const clearQuery = useCallback(() => {
     setQuery("");
     setSelectedIndex(0);
@@ -187,6 +267,9 @@ export function BookmarkManager({
           event.preventDefault();
           cycleFolderRef.current("prev");
         }
+      } else if (event.key === "Tab") {
+        event.preventDefault();
+        cycleFolderRef.current(event.shiftKey ? "prev" : "next");
       } else if (event.key === "ArrowRight") {
         const isInput = document.activeElement === inputRef.current;
         const atEnd = inputRef.current
@@ -220,15 +303,27 @@ export function BookmarkManager({
         if (event.target === event.currentTarget) onClose();
       }}
     >
+      {dragRef.current && (
+        <div className="palette-placement-grid" aria-hidden="true">
+          {Array.from({ length: 9 }, (_, index) => (
+            <div
+              key={index}
+              className={`palette-placement-cell ${dragPreviewCell?.column === index % 3 && dragPreviewCell?.row === Math.floor(index / 3) ? "is-preview" : ""}`}
+            />
+          ))}
+        </div>
+      )}
       <div
-        className={`palette-card bookmark-card ${isClosing ? "is-closing" : ""}`}
+        className={`palette-card bookmark-card ${dragRef.current ? "is-dragging" : ""} ${isClosing ? "is-closing" : ""}`}
         style={{
-          left: `${position.x * 100}%`,
-          top: `${position.y * 100}%`,
+          left: `${(dragPosition ?? position).x * 100}%`,
+          top: `${(dragPosition ?? position).y * 100}%`,
         }}
+        ref={cardRef}
         role="dialog"
         aria-modal="true"
         aria-label="Bookmarks"
+        onPointerDown={startDrag}
       >
         {/* Minimal Search Row */}
         <div className="search-bar-row">
@@ -238,7 +333,7 @@ export function BookmarkManager({
             <button
               type="button"
               className="bookmark-scope-pill"
-              onClick={() => cycleFolder("next")}
+              onClick={disableMouse ? undefined : () => cycleFolder("next")}
               title="Switch folder (← / →)"
               aria-label={`Current folder: ${selectedFolder ?? "All"}. Press Left or Right arrow to cycle`}
             >

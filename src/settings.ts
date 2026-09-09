@@ -6,6 +6,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   useVibrancy: true,
   disableMouseTabSwitcher: false,
   disableMouseCommandPalette: false,
+  disableMouseBookmarks: false,
   tabSwitchMode: "recent",
   pinnedTabs: [],
   palettePosition: { x: 0.5, y: 0.28 },
@@ -231,6 +232,9 @@ export function parseStoredSettings(value: unknown): UserSettings {
   const disableMouseCommandPalette = "disableMouseCommandPalette" in value && isBoolean(value.disableMouseCommandPalette)
     ? value.disableMouseCommandPalette
     : DEFAULT_SETTINGS.disableMouseCommandPalette;
+  const disableMouseBookmarks = "disableMouseBookmarks" in value && isBoolean(value.disableMouseBookmarks)
+    ? value.disableMouseBookmarks
+    : DEFAULT_SETTINGS.disableMouseBookmarks;
   const tabSwitchMode = "tabSwitchMode" in value && isTabSwitchMode(value.tabSwitchMode)
     ? value.tabSwitchMode
     : DEFAULT_SETTINGS.tabSwitchMode;
@@ -240,7 +244,7 @@ export function parseStoredSettings(value: unknown): UserSettings {
       ? parseLegacyPinnedTabs(value.pinnedTabIds)
       : DEFAULT_SETTINGS.pinnedTabs;
   const palettePosition = "palettePosition" in value ? parsePalettePosition(value.palettePosition) : DEFAULT_SETTINGS.palettePosition;
-  return { viewMode, theme, useVibrancy, disableMouseTabSwitcher, disableMouseCommandPalette, tabSwitchMode, pinnedTabs, palettePosition };
+  return { viewMode, theme, useVibrancy, disableMouseTabSwitcher, disableMouseCommandPalette, disableMouseBookmarks, tabSwitchMode, pinnedTabs, palettePosition };
 }
 
 function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
@@ -254,6 +258,9 @@ function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
       : {}),
     ...( "disableMouseCommandPalette" in value && isBoolean(value.disableMouseCommandPalette)
       ? { disableMouseCommandPalette: value.disableMouseCommandPalette }
+      : {}),
+    ...( "disableMouseBookmarks" in value && isBoolean(value.disableMouseBookmarks)
+      ? { disableMouseBookmarks: value.disableMouseBookmarks }
       : {}),
     ...( "tabSwitchMode" in value && isTabSwitchMode(value.tabSwitchMode)
       ? { tabSwitchMode: value.tabSwitchMode }
@@ -299,6 +306,7 @@ async function readChromeLocalSettings() {
     "useVibrancy",
     "disableMouseTabSwitcher",
     "disableMouseCommandPalette",
+    "disableMouseBookmarks",
     "tabSwitchMode",
     "pinnedTabs",
     "pinnedTabIds",
@@ -328,6 +336,7 @@ export async function getStoredSettings(): Promise<UserSettings> {
         "useVibrancy",
         "disableMouseTabSwitcher",
         "disableMouseCommandPalette",
+        "disableMouseBookmarks",
         "tabSwitchMode",
         "pinnedTabs",
         "pinnedTabIds",

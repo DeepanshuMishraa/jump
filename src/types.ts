@@ -36,6 +36,7 @@ export type UserSettings = {
   useVibrancy: boolean;
   disableMouseTabSwitcher: boolean;
   disableMouseCommandPalette: boolean;
+  disableMouseBookmarks: boolean;
   tabSwitchMode: TabSwitchMode;
   pinnedTabs: PinnedTab[];
   palettePosition: PalettePosition;
