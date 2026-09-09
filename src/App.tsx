@@ -4,6 +4,7 @@ import { ArrowRightIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { canStartPaletteDrag } from "./paletteDrag";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
+import { stalePreviewTabIds } from "./previewCache";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
 import { DEFAULT_SETTINGS, getStoredSettings, pinnedTabIdentity, saveStoredSettings, subscribeToSettings } from "./settings";
 import { useMountEffect } from "./hooks/useMountEffect";
@@ -29,6 +30,9 @@ export function App({
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const requestedPreviewIds = useRef(new Set<number>());
+  const requestedPreviewUrls = useRef(new Map<number, string>());
+  const previewRequestSequence = useRef(0);
+  const previewRequestVersions = useRef(new Map<number, number>());
   const [isDraggingPalette, setIsDraggingPalette] = useState(false);
   const [isPaletteDragReady, setIsPaletteDragReady] = useState(false);
   const paletteDragModifierRef = useRef(false);
@@ -83,15 +87,65 @@ export function App({
   const historySearchTimerRef = useRef<number | undefined>(undefined);
   const historyRequestIdRef = useRef(0);
   const requestTabPreviews = useCallback((tabIds: number[]) => {
-    const missingTabIds = tabIds.filter((tabId) => !requestedPreviewIds.current.has(tabId));
+    const currentTabUrls = new Map(tabsRef.current.map((tab) => [tab.id, tab.url]));
+    const missingTabIds = tabIds.filter((tabId) => {
+      const currentUrl = currentTabUrls.get(tabId);
+      if (currentUrl === undefined) return false;
+      if (!requestedPreviewIds.current.has(tabId)) return true;
+      if (requestedPreviewUrls.current.get(tabId) === currentUrl) return false;
+      requestedPreviewIds.current.delete(tabId);
+      previewRequestVersions.current.delete(tabId);
+      requestedPreviewUrls.current.delete(tabId);
+      return true;
+    });
     if (missingTabIds.length === 0) return;
-    missingTabIds.forEach((tabId) => requestedPreviewIds.current.add(tabId));
+
+    const requestVersion = previewRequestSequence.current + 1;
+    previewRequestSequence.current = requestVersion;
+    const requestedUrls = new Map(missingTabIds.map((tabId) => [tabId, currentTabUrls.get(tabId)]));
+    missingTabIds.forEach((tabId) => {
+      requestedPreviewIds.current.add(tabId);
+      requestedPreviewUrls.current.set(tabId, requestedUrls.get(tabId) ?? "");
+      previewRequestVersions.current.set(tabId, requestVersion);
+    });
+
     void getTabPreviews(missingTabIds).then((previews) => {
-      if (Object.keys(previews).length > 0) {
-        setPreviewUrls((current) => ({ ...current, ...previews }));
+      const validPreviews = Object.fromEntries(Object.entries(previews).filter(([tabId]) => {
+        const numericTabId = Number(tabId);
+        const currentTab = tabsRef.current.find((tab) => tab.id === numericTabId);
+        return previewRequestVersions.current.get(numericTabId) === requestVersion &&
+          currentTab?.url === requestedUrls.get(numericTabId);
+      }));
+      if (Object.keys(validPreviews).length > 0) {
+        setPreviewUrls((current) => ({ ...current, ...validPreviews }));
       }
+      missingTabIds.forEach((tabId) => {
+        if (!(String(tabId) in previews) && previewRequestVersions.current.get(tabId) === requestVersion) {
+          requestedPreviewIds.current.delete(tabId);
+          requestedPreviewUrls.current.delete(tabId);
+          previewRequestVersions.current.delete(tabId);
+        }
+      });
     }).catch(() => {
-      missingTabIds.forEach((tabId) => requestedPreviewIds.current.delete(tabId));
+      missingTabIds.forEach((tabId) => {
+        requestedPreviewIds.current.delete(tabId);
+        requestedPreviewUrls.current.delete(tabId);
+        previewRequestVersions.current.delete(tabId);
+      });
+    });
+  }, []);
+
+  const invalidateTabPreviews = useCallback((tabIds: number[]) => {
+    if (tabIds.length === 0) return;
+    tabIds.forEach((tabId) => {
+      requestedPreviewIds.current.delete(tabId);
+      requestedPreviewUrls.current.delete(tabId);
+      previewRequestVersions.current.delete(tabId);
+    });
+    setPreviewUrls((current) => {
+      const next = { ...current };
+      tabIds.forEach((tabId) => delete next[String(tabId)]);
+      return next;
     });
   }, []);
 
@@ -127,7 +181,6 @@ export function App({
   const handleClose = useCallback(() => {
     if (isClosingRef.current) return;
     isClosingRef.current = true;
-    void notifyPaletteClosed().catch(() => undefined);
     setIsClosing(true);
     setTimeout(() => {
       onClose();
@@ -141,6 +194,9 @@ export function App({
     try {
       const tabList = await getTabs();
       if (requestId !== tabsRequestIdRef.current) return;
+      const staleTabIds = stalePreviewTabIds(tabsRef.current, tabList);
+      invalidateTabPreviews(staleTabIds);
+      tabsRef.current = tabList;
       setTabs(tabList);
       if (isSwitcher && initialSwitcherSelectionPending.current && tabList.length > 0) {
         const activeIndex = initialActiveTabId === undefined
@@ -152,7 +208,7 @@ export function App({
     } catch {
       if (requestId === tabsRequestIdRef.current) setTabs([]);
     }
-  }, [isSwitcher, initialActiveTabId]);
+  }, [initialActiveTabId, invalidateTabPreviews, isSwitcher]);
   refreshTabsRef.current = refreshTabs;
 
   useMountEffect(() => {
@@ -171,15 +227,20 @@ export function App({
         ? [
             chrome.tabs.onCreated,
             chrome.tabs.onRemoved,
-            chrome.tabs.onUpdated,
             chrome.tabs.onActivated,
             chrome.windows.onFocusChanged,
           ]
         : [];
+    const handleTabUpdated = (tabId: number, changeInfo: { url?: string }) => {
+      if (changeInfo.url !== undefined) invalidateTabPreviews([tabId]);
+      scheduleRefresh();
+    };
     events.forEach((event) => event.addListener(scheduleRefresh));
+    chrome.tabs?.onUpdated.addListener(handleTabUpdated);
     return () => {
       if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
       events.forEach((event) => event.removeListener(scheduleRefresh));
+      chrome.tabs?.onUpdated.removeListener(handleTabUpdated);
     };
   });
 

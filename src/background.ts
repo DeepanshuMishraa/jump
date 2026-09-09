@@ -35,7 +35,9 @@ function enqueuePinUpdate(update: () => Promise<void>) {
 const previewCache = new Map<number, PreviewEntry>();
 const overlayTabIds = new Set<number>();
 const previewCaptureTimers = new Map<number, { tabId: number; timer: ReturnType<typeof setTimeout> }>();
-let previewCaptureQueue = Promise.resolve();
+const pendingPreviewCaptures = new Map<number, { tabId: number; generation: number }>();
+let previewCapturePump: Promise<void> | undefined;
+let previewCaptureGeneration = 0;
 let lastPreviewCaptureStartedAt = 0;
 
 function hostnameFor(url?: string) {
@@ -70,14 +72,14 @@ async function compactPreview(dataUrl: string) {
     const context = canvas.getContext("2d", { alpha: false });
     if (!context) {
       source.close();
-      return dataUrl;
+      return null;
     }
     context.drawImage(source, 0, 0, width, height);
     source.close();
     const blob = await canvas.convertToBlob({ type: "image/webp", quality: 0.82 });
     return `data:image/webp;base64,${bytesToBase64(new Uint8Array(await blob.arrayBuffer()))}`;
   } catch {
-    return dataUrl;
+    return null;
   }
 }
 
@@ -119,11 +121,11 @@ async function capturePreview(tabId: number, windowId: number) {
 
   try {
     const tab = await chrome.tabs.get(tabId);
-    if (overlayTabIds.has(tabId) || !tab.active || tab.discarded || !tab.url) return;
+    if (overlayTabIds.has(tabId) || !tab.active || tab.discarded || !tab.url) return null;
 
     const capturedDataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
     const currentTab = await chrome.tabs.get(tabId);
-    if (overlayTabIds.has(tabId) || !capturedDataUrl || currentTab.url !== tab.url || !currentTab.active) return;
+    if (overlayTabIds.has(tabId) || !capturedDataUrl || currentTab.url !== tab.url || !currentTab.active) return null;
 
     const capturedAt = Date.now();
     const entry = {
@@ -137,26 +139,49 @@ async function capturePreview(tabId: number, windowId: number) {
     // Make the raw preview available immediately. Compression and storage are
     // background work so they cannot delay the switcher or its repeat rate.
     void compactPreview(capturedDataUrl).then(async (dataUrl) => {
+      if (dataUrl === null) return;
       const currentEntry = previewCache.get(tabId);
       if (currentEntry?.capturedAt !== capturedAt || currentEntry.url !== tab.url) return;
       const compactedEntry = { ...entry, dataUrl };
       previewCache.set(tabId, compactedEntry);
       await persistPreview(compactedEntry);
     }).catch(() => undefined);
+    return entry;
   } catch {
     // Restricted browser pages and closed tabs cannot be captured.
+    return null;
   }
 }
 
-function enqueuePreviewCapture(tabId: number, windowId: number) {
-  const operation = previewCaptureQueue.catch(() => undefined).then(async () => {
+async function pumpPreviewCaptures() {
+  while (pendingPreviewCaptures.size > 0) {
+    const next = pendingPreviewCaptures.entries().next();
+    if (next.done) break;
+    const [windowId, request] = next.value;
     const waitMs = Math.max(0, PREVIEW_CAPTURE_INTERVAL_MS - (Date.now() - lastPreviewCaptureStartedAt));
     if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+
+    const latest = pendingPreviewCaptures.get(windowId);
+    if (!latest || latest.generation !== request.generation) continue;
+    pendingPreviewCaptures.delete(windowId);
     lastPreviewCaptureStartedAt = Date.now();
-    await capturePreview(tabId, windowId);
+    await capturePreview(request.tabId, windowId);
+  }
+}
+
+function startPreviewCapturePump() {
+  if (previewCapturePump !== undefined) return;
+  previewCapturePump = pumpPreviewCaptures().finally(() => {
+    previewCapturePump = undefined;
+    startPreviewCapturePump();
   });
-  previewCaptureQueue = operation.catch(() => undefined);
-  return operation;
+}
+
+function enqueuePreviewCapture(tabId: number, windowId: number) {
+  previewCaptureGeneration += 1;
+  pendingPreviewCaptures.set(windowId, { tabId, generation: previewCaptureGeneration });
+  startPreviewCapturePump();
+  return previewCapturePump;
 }
 
 function schedulePreviewCapture(tabId: number, windowId: number) {
@@ -328,7 +353,7 @@ chrome.tabs.onRemoved.addListener((tabId, { windowId }) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.url !== undefined) {
+  if (changeInfo.status === "loading" || changeInfo.url !== undefined) {
     overlayTabIds.delete(tabId);
     void removeCachedPreview(tabId);
   }

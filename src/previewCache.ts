@@ -22,6 +22,7 @@ export function parsePreviewEntries(value: unknown) {
     typeof entry.url === "string" &&
     "dataUrl" in entry &&
     typeof entry.dataUrl === "string" &&
+    entry.dataUrl.startsWith("data:") &&
     "capturedAt" in entry &&
     typeof entry.capturedAt === "number"
   );
@@ -30,4 +31,11 @@ export function parsePreviewEntries(value: unknown) {
 export function retainOpenTabPreviews(entries: Iterable<PreviewEntry>, tabs: Iterable<OpenTab>) {
   const openTabUrls = new Map([...tabs].map((tab) => [tab.id, tab.url]));
   return [...entries].filter((entry) => openTabUrls.get(entry.tabId) === entry.url);
+}
+
+export function stalePreviewTabIds(previousTabs: Iterable<OpenTab>, nextTabs: Iterable<OpenTab>) {
+  const nextTabUrls = new Map([...nextTabs].map((tab) => [tab.id, tab.url]));
+  return [...previousTabs]
+    .filter((tab) => nextTabUrls.get(tab.id) !== tab.url)
+    .map((tab) => tab.id);
 }

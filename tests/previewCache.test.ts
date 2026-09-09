@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { retainOpenTabPreviews, type PreviewEntry } from "../src/previewCache.ts";
+import { parsePreviewEntries, retainOpenTabPreviews, stalePreviewTabIds, type PreviewEntry } from "../src/previewCache.ts";
+
+test("rejects preview entries without data URLs", () => {
+  assert.deepEqual(parsePreviewEntries([
+    { tabId: 1, url: "https://example.com", dataUrl: "broken", capturedAt: 1 },
+    { tabId: 2, url: "https://example.com", dataUrl: "data:image/webp;base64,valid", capturedAt: 2 },
+  ]), [{ tabId: 2, url: "https://example.com", dataUrl: "data:image/webp;base64,valid", capturedAt: 2 }]);
+});
 
 test("retains a preview for every open tab without a fixed cache limit", () => {
   const previews: PreviewEntry[] = Array.from({ length: 100 }, (_, index) => ({
@@ -12,6 +19,16 @@ test("retains a preview for every open tab without a fixed cache limit", () => {
   const tabs = previews.map(({ tabId: id, url }) => ({ id, url }));
 
   assert.equal(retainOpenTabPreviews(previews, tabs).length, tabs.length);
+});
+
+test("identifies preview entries invalidated by navigation or tab closure", () => {
+  assert.deepEqual(
+    stalePreviewTabIds(
+      [{ id: 1, url: "https://old.example" }, { id: 2, url: "https://closed.example" }],
+      [{ id: 1, url: "https://new.example" }, { id: 3, url: "https://added.example" }],
+    ),
+    [1, 2],
+  );
 });
 
 test("removes previews for closed or navigated tabs", () => {
