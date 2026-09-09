@@ -5,7 +5,6 @@ import type { BrowserMessage, PaletteTab } from "./types";
 const LEGACY_PREVIEW_CACHE_KEY = "recent-tab-previews";
 const LEGACY_PREVIEW_CACHE_PREFIX = "tab-preview:";
 const PREVIEW_CACHE_PREFIX = "tab-preview-v2:";
-const PREVIEW_CAPTURE_DELAY_MS = 250;
 const PREVIEW_CAPTURE_INTERVAL_MS = 550;
 const PREVIEW_MAX_WIDTH = 640;
 const PREVIEW_MAX_HEIGHT = 400;
@@ -34,10 +33,6 @@ function enqueuePinUpdate(update: () => Promise<void>) {
 
 const previewCache = new Map<number, PreviewEntry>();
 const overlayTabIds = new Set<number>();
-const previewCaptureTimers = new Map<number, { tabId: number; timer: ReturnType<typeof setTimeout> }>();
-const pendingPreviewCaptures = new Map<number, { tabId: number; generation: number }>();
-let previewCapturePump: Promise<void> | undefined;
-let previewCaptureGeneration = 0;
 let lastPreviewCaptureStartedAt = 0;
 
 function hostnameFor(url?: string) {
@@ -151,55 +146,6 @@ async function capturePreview(tabId: number, windowId: number) {
     // Restricted browser pages and closed tabs cannot be captured.
     return null;
   }
-}
-
-async function pumpPreviewCaptures() {
-  while (pendingPreviewCaptures.size > 0) {
-    const next = pendingPreviewCaptures.entries().next();
-    if (next.done) break;
-    const [windowId, request] = next.value;
-    const waitMs = Math.max(0, PREVIEW_CAPTURE_INTERVAL_MS - (Date.now() - lastPreviewCaptureStartedAt));
-    if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
-
-    const latest = pendingPreviewCaptures.get(windowId);
-    if (!latest || latest.generation !== request.generation) continue;
-    pendingPreviewCaptures.delete(windowId);
-    lastPreviewCaptureStartedAt = Date.now();
-    await capturePreview(request.tabId, windowId);
-  }
-}
-
-function startPreviewCapturePump() {
-  if (previewCapturePump !== undefined) return;
-  previewCapturePump = pumpPreviewCaptures().finally(() => {
-    previewCapturePump = undefined;
-    startPreviewCapturePump();
-  });
-}
-
-function enqueuePreviewCapture(tabId: number, windowId: number) {
-  previewCaptureGeneration += 1;
-  pendingPreviewCaptures.set(windowId, { tabId, generation: previewCaptureGeneration });
-  startPreviewCapturePump();
-  return previewCapturePump;
-}
-
-function schedulePreviewCapture(tabId: number, windowId: number) {
-  const pendingCapture = previewCaptureTimers.get(windowId);
-  if (pendingCapture !== undefined) clearTimeout(pendingCapture.timer);
-
-  const timer = setTimeout(() => {
-    previewCaptureTimers.delete(windowId);
-    void enqueuePreviewCapture(tabId, windowId);
-  }, PREVIEW_CAPTURE_DELAY_MS);
-  previewCaptureTimers.set(windowId, { tabId, timer });
-}
-
-async function scheduleActiveTabCaptures() {
-  const activeTabs = await chrome.tabs.query({ active: true });
-  activeTabs.forEach((tab) => {
-    if (tab.id !== undefined) schedulePreviewCapture(tab.id, tab.windowId);
-  });
 }
 
 async function sendToTab(tab: chrome.tabs.Tab, message: BrowserMessage) {
@@ -335,20 +281,8 @@ async function getTabs(): Promise<PaletteTab[]> {
 chrome.history.onVisited.addListener(invalidateHistoryCache);
 chrome.history.onVisitRemoved.addListener(invalidateHistoryCache);
 
-chrome.runtime.onInstalled.addListener(() => void scheduleActiveTabCaptures());
-chrome.runtime.onStartup.addListener(() => void scheduleActiveTabCaptures());
-
-chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
-  schedulePreviewCapture(tabId, windowId);
-});
-
-chrome.tabs.onRemoved.addListener((tabId, { windowId }) => {
+chrome.tabs.onRemoved.addListener((tabId) => {
   overlayTabIds.delete(tabId);
-  const pendingCapture = previewCaptureTimers.get(windowId);
-  if (pendingCapture?.tabId === tabId) {
-    clearTimeout(pendingCapture.timer);
-    previewCaptureTimers.delete(windowId);
-  }
   void removeCachedPreview(tabId);
 });
 
@@ -357,16 +291,6 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     overlayTabIds.delete(tabId);
     void removeCachedPreview(tabId);
   }
-  if (tab.active && (changeInfo.status === "complete" || changeInfo.url !== undefined)) {
-    schedulePreviewCapture(tabId, tab.windowId);
-  }
-});
-
-chrome.windows.onFocusChanged.addListener((windowId) => {
-  if (windowId === chrome.windows.WINDOW_ID_NONE) return;
-  void chrome.tabs.query({ active: true, windowId }).then(([tab]) => {
-    if (tab?.id !== undefined) schedulePreviewCapture(tab.id, windowId);
-  });
 });
 
 async function openSearchPalette() {

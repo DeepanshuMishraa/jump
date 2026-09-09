@@ -570,9 +570,13 @@ export function App({
   const visiblePalettePosition = dragPosition ?? settings.palettePosition;
 
   const handlePalettePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!canStartPaletteDrag({
+    const target = event.target instanceof Element
+      ? event.target.closest("input, button, select, textarea, a, [role=button], [role=option]")
+      : null;
+    if (target !== null || !canStartPaletteDrag({
       altKey: event.altKey || paletteDragModifierRef.current,
       button: event.button,
+      mouseDisabled: settings.disableMouseCommandPalette,
     })) return;
     event.preventDefault();
     event.stopPropagation();
