@@ -517,8 +517,15 @@ button {
   color: var(--accent-primary);
 }
 
-.palette-card.is-dragging .search-bar-row {
-  cursor: grabbing;
+.palette-card.is-drag-ready,
+.palette-card.is-drag-ready * {
+  cursor: grab !important;
+}
+
+.palette-card.is-dragging,
+.palette-card.is-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
 }
 
 .palette-placement-grid {

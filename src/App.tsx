@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardE
 import { activateTab, getBrowserHistory, getTabPreviews, getTabs, notifyPaletteClosed, notifyPaletteOpened, openUrl, searchWeb, setTabMuted, setTabPinned, type BrowserHistoryItem } from "./browser";
 import { ArrowRightIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
+import { canStartPaletteDrag } from "./paletteDrag";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
 import { DEFAULT_SETTINGS, getStoredSettings, pinnedTabIdentity, saveStoredSettings, subscribeToSettings } from "./settings";
@@ -29,6 +30,8 @@ export function App({
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const requestedPreviewIds = useRef(new Set<number>());
   const [isDraggingPalette, setIsDraggingPalette] = useState(false);
+  const [isPaletteDragReady, setIsPaletteDragReady] = useState(false);
+  const paletteDragModifierRef = useRef(false);
   const [dragPosition, setDragPosition] = useState<PalettePosition | undefined>();
   const [dragPreviewCell, setDragPreviewCell] = useState<{ column: number; row: number }>();
   const paletteCardRef = useRef<HTMLDivElement>(null);
@@ -288,6 +291,10 @@ export function App({
   // Global keyup/keydown handler for releasing Alt key and cycling in switcher mode
   useMountEffect(() => {
     const handleWindowKeyUp = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Alt") {
+        paletteDragModifierRef.current = false;
+        setIsPaletteDragReady(false);
+      }
       if (modeRef.current !== "switcher") return;
       if (event.key === "Alt" || !event.altKey) {
         const currentTabs = tabsRef.current;
@@ -301,6 +308,10 @@ export function App({
     };
 
     const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Alt") {
+        paletteDragModifierRef.current = true;
+        setIsPaletteDragReady(true);
+      }
       if (event.altKey && (event.key.toLowerCase() === "m" || event.code === "KeyM")) {
         event.preventDefault();
         event.stopPropagation();
@@ -498,12 +509,12 @@ export function App({
   const visiblePalettePosition = dragPosition ?? settings.palettePosition;
 
   const handlePalettePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    const target = event.target instanceof Element ? event.target.closest("input, button") : null;
-    if (
-      settings.disableMouseCommandPalette ||
-      event.button !== 0 ||
-      target !== null
-    ) return;
+    if (!canStartPaletteDrag({
+      altKey: event.altKey || paletteDragModifierRef.current,
+      button: event.button,
+    })) return;
+    event.preventDefault();
+    event.stopPropagation();
     const position = settings.palettePosition;
     paletteDragRef.current = {
       pointerId: event.pointerId,
@@ -523,7 +534,14 @@ export function App({
 
   const handlePalettePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const drag = paletteDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag) {
+      if (paletteDragModifierRef.current !== event.altKey) {
+        paletteDragModifierRef.current = event.altKey;
+        setIsPaletteDragReady(event.altKey);
+      }
+      return;
+    }
+    if (drag.pointerId !== event.pointerId) return;
     const deltaX = event.clientX - drag.startX;
     const deltaY = event.clientY - drag.startY;
     if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) drag.moved = true;
@@ -592,19 +610,26 @@ export function App({
       )}
       <div
         ref={paletteCardRef}
-        className={`palette-card ${showDropdown ? "is-expanded" : ""} ${isGallery && showDropdown ? "is-gallery-view" : ""} ${isClosing ? "is-closing" : ""} ${isDraggingPalette ? "is-dragging" : ""}`}
+        className={`palette-card ${showDropdown ? "is-expanded" : ""} ${isGallery && showDropdown ? "is-gallery-view" : ""} ${isClosing ? "is-closing" : ""} ${isPaletteDragReady ? "is-drag-ready" : ""} ${isDraggingPalette ? "is-dragging" : ""}`}
         style={{ left: `${visiblePalettePosition.x * 100}%`, top: `${visiblePalettePosition.y * 100}%` }}
         role="dialog"
         aria-modal="true"
+        onPointerDown={handlePalettePointerDown}
+        onPointerMove={handlePalettePointerMove}
+        onPointerUp={finishPaletteDrag}
+        onPointerCancel={cancelPaletteDrag}
+        onPointerEnter={(event) => {
+          paletteDragModifierRef.current = event.altKey;
+          setIsPaletteDragReady(event.altKey);
+        }}
+        onPointerLeave={() => {
+          if (paletteDragRef.current) return;
+          paletteDragModifierRef.current = false;
+          setIsPaletteDragReady(false);
+        }}
       >
         {/* Elevated 3D Search Bar Input Row */}
-        <div
-          className="search-bar-row"
-          onPointerDown={handlePalettePointerDown}
-          onPointerMove={handlePalettePointerMove}
-          onPointerUp={finishPaletteDrag}
-          onPointerCancel={cancelPaletteDrag}
-        >
+        <div className="search-bar-row">
           <SearchIcon size={17} className="search-lead-icon" />
           <input
             ref={inputRef}

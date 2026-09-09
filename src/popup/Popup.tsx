@@ -16,6 +16,7 @@ export function Popup() {
   const defaultSwitcherShortcut = isMac ? "⌥Q" : "Alt Q";
   const defaultPinShortcut = isMac ? "⌘K" : "Alt K";
   const defaultMuteShortcut = isMac ? "⌥M" : "Alt M";
+  const movePaletteShortcut = isMac ? "⌥ + drag" : "Alt + drag";
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
     ? chrome.runtime.getManifest().version
     : "0.1.6";
@@ -221,6 +222,12 @@ export function Popup() {
             </span>
           </div>
         ))}
+        <div className="popup-shortcut-row">
+          <span>Move command palette</span>
+          <span className="popup-key-group">
+            <kbd>{movePaletteShortcut}</kbd>
+          </span>
+        </div>
       </section>
 
       <footer className="popup-footer-bar">
