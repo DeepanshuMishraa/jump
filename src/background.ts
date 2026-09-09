@@ -1,17 +1,13 @@
+import { parsePreviewEntries, retainOpenTabPreviews, type PreviewEntry } from "./previewCache";
 import { getStoredSettings, pinnedTabIdentity, saveStoredSettings } from "./settings";
 import type { BrowserMessage, PaletteTab } from "./types";
 
-type PreviewEntry = {
-  tabId: number;
-  url: string;
-  dataUrl: string;
-  capturedAt: number;
-};
-
-const PREVIEW_CACHE_KEY = "recent-tab-previews";
-const PREVIEW_TTL_MS = 24 * 60 * 60 * 1000;
-const MAX_PREVIEW_COUNT = 24;
-const MAX_PREVIEW_CHARACTERS = 9_000_000;
+const LEGACY_PREVIEW_CACHE_KEY = "recent-tab-previews";
+const PREVIEW_CACHE_PREFIX = "tab-preview:";
+const PREVIEW_CAPTURE_DELAY_MS = 600;
+const PREVIEW_CAPTURE_INTERVAL_MS = 550;
+const PREVIEW_MAX_WIDTH = 480;
+const PREVIEW_MAX_HEIGHT = 300;
 const HISTORY_CACHE_LIMIT = 100;
 
 type HistoryResult = {
@@ -36,6 +32,9 @@ function enqueuePinUpdate(update: () => Promise<void>) {
 }
 
 const previewCache = new Map<number, PreviewEntry>();
+const previewCaptureTimers = new Map<number, { tabId: number; timer: ReturnType<typeof setTimeout> }>();
+let previewCaptureQueue = Promise.resolve();
+let lastPreviewCaptureStartedAt = 0;
 
 function hostnameFor(url?: string) {
   if (!url) return "";
@@ -46,106 +45,130 @@ function hostnameFor(url?: string) {
   }
 }
 
-function parsePreviewEntries(value: unknown) {
-  if (!Array.isArray(value)) return [];
-
-  return value.filter((entry): entry is PreviewEntry =>
-    typeof entry === "object" &&
-    entry !== null &&
-    "tabId" in entry &&
-    typeof entry.tabId === "number" &&
-    "url" in entry &&
-    typeof entry.url === "string" &&
-    "dataUrl" in entry &&
-    typeof entry.dataUrl === "string" &&
-    "capturedAt" in entry &&
-    typeof entry.capturedAt === "number"
-  );
+function previewStorageKey(tabId: number) {
+  return `${PREVIEW_CACHE_PREFIX}${tabId}`;
 }
 
-function prunePreviewCache(now = Date.now()) {
-  const previousTabIds = new Set(previewCache.keys());
-  const recentEntries = [...previewCache.values()]
-    .filter((entry) => now - entry.capturedAt < PREVIEW_TTL_MS)
-    .sort((a, b) => b.capturedAt - a.capturedAt);
-
-  previewCache.clear();
-  let totalCharacters = 0;
-
-  for (const entry of recentEntries) {
-    if (previewCache.size >= MAX_PREVIEW_COUNT) break;
-    if (totalCharacters + entry.dataUrl.length > MAX_PREVIEW_CHARACTERS) continue;
-    previewCache.set(entry.tabId, entry);
-    totalCharacters += entry.dataUrl.length;
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const chunkSize = 32_768;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
   }
-
-  return previousTabIds.size !== previewCache.size ||
-    [...previousTabIds].some((tabId) => !previewCache.has(tabId));
+  return btoa(binary);
 }
 
-async function writePreviewCache() {
+async function compactPreview(dataUrl: string) {
   try {
-    await chrome.storage.session.set({
-      [PREVIEW_CACHE_KEY]: [...previewCache.values()],
-    });
+    const source = await createImageBitmap(await (await fetch(dataUrl)).blob());
+    const scale = Math.min(1, PREVIEW_MAX_WIDTH / source.width, PREVIEW_MAX_HEIGHT / source.height);
+    const width = Math.max(1, Math.round(source.width * scale));
+    const height = Math.max(1, Math.round(source.height * scale));
+    const canvas = new OffscreenCanvas(width, height);
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) {
+      source.close();
+      return dataUrl;
+    }
+    context.drawImage(source, 0, 0, width, height);
+    source.close();
+    const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.55 });
+    return `data:image/jpeg;base64,${bytesToBase64(new Uint8Array(await blob.arrayBuffer()))}`;
+  } catch {
+    return dataUrl;
+  }
+}
+
+async function persistPreview(entry: PreviewEntry) {
+  try {
+    await chrome.storage.session.set({ [previewStorageKey(entry.tabId)]: entry });
   } catch {
     // The in-memory cache remains usable if session storage is unavailable.
   }
 }
 
-async function persistPreviewCache() {
-  await previewCacheReady;
-  prunePreviewCache();
-  await writePreviewCache();
-}
-
 const previewCacheReady = chrome.storage.session
-  .get(PREVIEW_CACHE_KEY)
+  .get(null)
   .then(async (stored) => {
-    const entries = parsePreviewEntries(stored[PREVIEW_CACHE_KEY]);
-    entries.forEach((entry) => previewCache.set(entry.tabId, entry));
-    if (prunePreviewCache()) await writePreviewCache();
+    const legacyEntries = parsePreviewEntries(stored[LEGACY_PREVIEW_CACHE_KEY]);
+    const keyedEntries = Object.entries(stored).flatMap(([key, value]) =>
+      key.startsWith(PREVIEW_CACHE_PREFIX) ? parsePreviewEntries([value]) : []
+    );
+    [...legacyEntries, ...keyedEntries].forEach((entry) => previewCache.set(entry.tabId, entry));
+
+    const keyedTabIds = new Set(keyedEntries.map((entry) => entry.tabId));
+    const entriesToMigrate = legacyEntries.filter((entry) => !keyedTabIds.has(entry.tabId));
+    if (legacyEntries.length > 0) {
+      if (entriesToMigrate.length > 0) {
+        await chrome.storage.session.set(Object.fromEntries(
+          entriesToMigrate.map((entry) => [previewStorageKey(entry.tabId), entry]),
+        ));
+      }
+      await chrome.storage.session.remove(LEGACY_PREVIEW_CACHE_KEY);
+    }
   })
   .catch(() => {});
 
 async function removeCachedPreview(tabId: number) {
   await previewCacheReady;
   previewCache.delete(tabId);
-  await persistPreviewCache();
+  await chrome.storage.session.remove(previewStorageKey(tabId)).catch(() => undefined);
 }
 
 async function capturePreview(tabId: number, windowId: number) {
   await previewCacheReady;
 
   try {
-    const [tab, window] = await Promise.all([
-      chrome.tabs.get(tabId),
-      chrome.windows.get(windowId),
-    ]);
-    if (!tab.active || !window.focused || !tab.url) return;
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab.active || tab.discarded || !tab.url) return;
 
-    const dataUrl = await chrome.tabs.captureVisibleTab(windowId, {
+    const capturedDataUrl = await chrome.tabs.captureVisibleTab(windowId, {
       format: "jpeg",
-      quality: 35,
+      quality: 45,
     });
     const currentTab = await chrome.tabs.get(tabId);
-    const currentWindow = await chrome.windows.get(windowId);
-    if (!dataUrl || currentTab.url !== tab.url || !currentTab.active || !currentWindow.focused) {
-      previewCache.delete(tabId);
-      await persistPreviewCache();
-      return;
-    }
+    if (!capturedDataUrl || currentTab.url !== tab.url || !currentTab.active) return;
 
-    previewCache.set(tabId, {
+    const entry = {
       tabId,
-      url: currentTab.url ?? tab.url,
-      dataUrl,
+      url: tab.url,
+      dataUrl: await compactPreview(capturedDataUrl),
       capturedAt: Date.now(),
-    });
-    await persistPreviewCache();
+    };
+    previewCache.set(tabId, entry);
+    await persistPreview(entry);
   } catch {
     // Restricted browser pages and closed tabs cannot be captured.
   }
+}
+
+function enqueuePreviewCapture(tabId: number, windowId: number) {
+  const operation = previewCaptureQueue.catch(() => undefined).then(async () => {
+    const waitMs = Math.max(0, PREVIEW_CAPTURE_INTERVAL_MS - (Date.now() - lastPreviewCaptureStartedAt));
+    if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+    lastPreviewCaptureStartedAt = Date.now();
+    await capturePreview(tabId, windowId);
+  });
+  previewCaptureQueue = operation.catch(() => undefined);
+  return operation;
+}
+
+function schedulePreviewCapture(tabId: number, windowId: number) {
+  const pendingCapture = previewCaptureTimers.get(windowId);
+  if (pendingCapture !== undefined) clearTimeout(pendingCapture.timer);
+
+  const timer = setTimeout(() => {
+    previewCaptureTimers.delete(windowId);
+    void enqueuePreviewCapture(tabId, windowId);
+  }, PREVIEW_CAPTURE_DELAY_MS);
+  previewCaptureTimers.set(windowId, { tabId, timer });
+}
+
+async function scheduleActiveTabCaptures() {
+  const activeTabs = await chrome.tabs.query({ active: true });
+  activeTabs.forEach((tab) => {
+    if (tab.id !== undefined) schedulePreviewCapture(tab.id, tab.windowId);
+  });
 }
 
 async function sendToTab(tab: chrome.tabs.Tab, message: BrowserMessage) {
@@ -235,7 +258,13 @@ async function getTabs(): Promise<PaletteTab[]> {
       await saveStoredSettings({ pinnedTabs: migratedTabs });
     });
   }
-  if (prunePreviewCache()) await writePreviewCache();
+  const retainedPreviews = retainOpenTabPreviews(previewCache.values(), browserTabs);
+  const retainedTabIds = new Set(retainedPreviews.map((entry) => entry.tabId));
+  const staleTabIds = [...previewCache.keys()].filter((tabId) => !retainedTabIds.has(tabId));
+  staleTabIds.forEach((tabId) => previewCache.delete(tabId));
+  if (staleTabIds.length > 0) {
+    void chrome.storage.session.remove(staleTabIds.map(previewStorageKey)).catch(() => undefined);
+  }
 
   const focusedWindows = new Set(windows.filter((window) => window.focused).map((window) => window.id));
 
@@ -275,12 +304,34 @@ async function getTabs(): Promise<PaletteTab[]> {
 chrome.history.onVisited.addListener(invalidateHistoryCache);
 chrome.history.onVisitRemoved.addListener(invalidateHistoryCache);
 
-chrome.tabs.onRemoved.addListener((tabId) => {
+chrome.runtime.onInstalled.addListener(() => void scheduleActiveTabCaptures());
+chrome.runtime.onStartup.addListener(() => void scheduleActiveTabCaptures());
+
+chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
+  schedulePreviewCapture(tabId, windowId);
+});
+
+chrome.tabs.onRemoved.addListener((tabId, { windowId }) => {
+  const pendingCapture = previewCaptureTimers.get(windowId);
+  if (pendingCapture?.tabId === tabId) {
+    clearTimeout(pendingCapture.timer);
+    previewCaptureTimers.delete(windowId);
+  }
   void removeCachedPreview(tabId);
 });
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url !== undefined) void removeCachedPreview(tabId);
+  if (tab.active && (changeInfo.status === "complete" || changeInfo.url !== undefined)) {
+    schedulePreviewCapture(tabId, tab.windowId);
+  }
+});
+
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId === chrome.windows.WINDOW_ID_NONE) return;
+  void chrome.tabs.query({ active: true, windowId }).then(([tab]) => {
+    if (tab?.id !== undefined) schedulePreviewCapture(tab.id, windowId);
+  });
 });
 
 async function openSearchPalette() {
@@ -296,10 +347,14 @@ async function openTabSwitcher() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab) return;
 
-  // Capture before mounting the switcher. Capturing after it opens includes the
-  // switcher itself in the thumbnail, which is especially confusing on repeat use.
-  if (tab.id !== undefined && tab.windowId !== undefined) {
-    await capturePreview(tab.id, tab.windowId);
+  // Active tabs are captured as they settle. Only block the first switcher open
+  // when no preview exists; cached opens remain instantaneous and never capture
+  // the switcher UI itself.
+  if (tab.id !== undefined && !previewCache.has(tab.id)) {
+    const pendingCapture = previewCaptureTimers.get(tab.windowId);
+    if (pendingCapture !== undefined) clearTimeout(pendingCapture.timer);
+    previewCaptureTimers.delete(tab.windowId);
+    await enqueuePreviewCapture(tab.id, tab.windowId);
   }
 
   const [currentTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
