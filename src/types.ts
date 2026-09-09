@@ -33,11 +33,22 @@ export type PinnedTab = {
 export type UserSettings = {
   viewMode: ViewMode;
   theme: ColorTheme;
+  useVibrancy: boolean;
   disableMouseTabSwitcher: boolean;
   disableMouseCommandPalette: boolean;
+  disableMouseBookmarks: boolean;
   tabSwitchMode: TabSwitchMode;
   pinnedTabs: PinnedTab[];
   palettePosition: PalettePosition;
+};
+
+export type BookmarkItem = {
+  id: string;
+  title: string;
+  url: string;
+  folderPath: string[];
+  dateAdded?: number;
+  faviconUrl?: string;
 };
 
 export type PaletteTab = {
@@ -48,7 +59,6 @@ export type PaletteTab = {
   hostname: string;
   index: number;
   faviconUrl?: string;
-  previewUrl?: string;
   active: boolean;
   windowFocused: boolean;
   pinned: boolean;
@@ -59,17 +69,21 @@ export type PaletteTab = {
 
 export type BrowserMessage =
   | { type: "get-tabs" }
+  | { type: "get-tab-previews"; tabIds: number[] }
+  | { type: "palette-opened" }
+  | { type: "palette-closed" }
   | { type: "search-history"; query: string; maxResults?: number }
   | { type: "activate-tab"; tab: PaletteTab }
   | { type: "toggle-tab-muted"; tabId: number; muted: boolean }
   | { type: "open-url"; url: string; openerTabId?: number }
   | { type: "search-web"; query: string }
   | { type: "open-shortcut-settings" }
-  | { type: "open-palette"; mode?: "search" | "switcher"; previewUrl?: string; activeTabId?: number }
-  | { type: "update-switcher-preview"; previewUrl: string }
+  | { type: "open-palette"; mode?: "search" | "switcher" | "bookmarks"; activeTabId?: number }
   | { type: "cycle-tab-switcher"; direction?: "next" | "prev" }
   | { type: "request-pin-selected-tab" }
   | { type: "request-mute-selected-tab" }
+  | { type: "get-bookmarks" }
+  | { type: "open-bookmark"; url: string }
   | { type: "set-tab-pinned"; tab: PinnedTab; pinned: boolean }
   | { type: "get-settings" }
   | { type: "save-settings"; settings: Partial<UserSettings> };

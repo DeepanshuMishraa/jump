@@ -1,24 +1,25 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, setTabMuted, setTabPinned, type BrowserHistoryItem } from "./browser";
+import { activateTab, getBrowserHistory, getTabPreviews, getTabs, notifyPaletteClosed, notifyPaletteOpened, openUrl, searchWeb, setTabMuted, setTabPinned, type BrowserHistoryItem } from "./browser";
 import { ArrowRightIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
+import { canStartPaletteDrag, dragPreviewCellForPoint, isAltModifierActive, nextFreeDragPosition, snapPalettePosition } from "./paletteDrag";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
+import { stalePreviewTabIds } from "./previewCache";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
 import { DEFAULT_SETTINGS, getStoredSettings, pinnedTabIdentity, saveStoredSettings, subscribeToSettings } from "./settings";
 import { useMountEffect } from "./hooks/useMountEffect";
 import { TabFavicon, TabSoundIndicator } from "./components/TabVisuals";
 import { GalleryCard, SwitcherCard } from "./components/TabCards";
+import { BookmarkManager } from "./components/BookmarkManager";
 import type { BrowserMessage, PalettePosition, PaletteTab, UserSettings } from "./types";
 
 export function App({
   onClose,
   initialMode = "search",
-  previewUrl,
   initialActiveTabId,
 }: {
   onClose: () => void;
-  initialMode?: "search" | "switcher";
-  previewUrl?: string;
+  initialMode?: "search" | "switcher" | "bookmarks";
   initialActiveTabId?: number;
 }) {
   const [tabs, setTabs] = useState<PaletteTab[]>([]);
@@ -26,10 +27,16 @@ export function App({
   const [recentBrowserHistory, setRecentBrowserHistory] = useState<BrowserHistoryItem[]>([]);
   const [browserHistory, setBrowserHistory] = useState<BrowserHistoryItem[]>([]);
   const [query, setQuery] = useState("");
-  const [mode, setMode] = useState<"search" | "switcher">(initialMode);
+  const [mode, setMode] = useState<"search" | "switcher" | "bookmarks">(initialMode);
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
-  const [currentPreviewUrl, setCurrentPreviewUrl] = useState(previewUrl);
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
+  const requestedPreviewIds = useRef(new Set<number>());
+  const requestedPreviewUrls = useRef(new Map<number, string>());
+  const previewRequestSequence = useRef(0);
+  const previewRequestVersions = useRef(new Map<number, number>());
   const [isDraggingPalette, setIsDraggingPalette] = useState(false);
+  const [isPaletteDragReady, setIsPaletteDragReady] = useState(false);
+  const paletteDragModifierRef = useRef(false);
   const [dragPosition, setDragPosition] = useState<PalettePosition | undefined>();
   const [dragPreviewCell, setDragPreviewCell] = useState<{ column: number; row: number }>();
   const paletteCardRef = useRef<HTMLDivElement>(null);
@@ -40,13 +47,23 @@ export function App({
     startPosition: PalettePosition;
     moved: boolean;
   } | undefined>(undefined);
+  const pointerDownAnchorRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    button: number;
+  } | undefined>(undefined);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   const isSwitcher = mode === "switcher";
+  const isBookmarks = mode === "bookmarks";
   const isGallery = settings.viewMode === "gallery";
   const [isExpanded, setIsExpanded] = useState(isSwitcher);
   const [selectedIndex, setSelectedIndex] = useState(isSwitcher ? 1 : 0);
   const initialSwitcherSelectionPending = useRef(isSwitcher && initialActiveTabId !== undefined);
   const [isClosing, setIsClosing] = useState(false);
+  const isClosingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -62,6 +79,13 @@ export function App({
   modeRef.current = mode;
   const tabsRequestIdRef = useRef(0);
 
+  useMountEffect(() => {
+    void notifyPaletteOpened().catch(() => undefined);
+    return () => {
+      void notifyPaletteClosed().catch(() => undefined);
+    };
+  });
+
   // Load and subscribe to persistent settings
   useMountEffect(() => {
     void getStoredSettings().then(setSettings);
@@ -72,6 +96,69 @@ export function App({
 
   const historySearchTimerRef = useRef<number | undefined>(undefined);
   const historyRequestIdRef = useRef(0);
+  const requestTabPreviews = useCallback((tabIds: number[]) => {
+    const currentTabUrls = new Map(tabsRef.current.map((tab) => [tab.id, tab.url]));
+    const missingTabIds = tabIds.filter((tabId) => {
+      const currentUrl = currentTabUrls.get(tabId);
+      if (currentUrl === undefined) return false;
+      if (!requestedPreviewIds.current.has(tabId)) return true;
+      if (requestedPreviewUrls.current.get(tabId) === currentUrl) return false;
+      requestedPreviewIds.current.delete(tabId);
+      previewRequestVersions.current.delete(tabId);
+      requestedPreviewUrls.current.delete(tabId);
+      return true;
+    });
+    if (missingTabIds.length === 0) return;
+
+    const requestVersion = previewRequestSequence.current + 1;
+    previewRequestSequence.current = requestVersion;
+    const requestedUrls = new Map(missingTabIds.map((tabId) => [tabId, currentTabUrls.get(tabId)]));
+    missingTabIds.forEach((tabId) => {
+      requestedPreviewIds.current.add(tabId);
+      requestedPreviewUrls.current.set(tabId, requestedUrls.get(tabId) ?? "");
+      previewRequestVersions.current.set(tabId, requestVersion);
+    });
+
+    void getTabPreviews(missingTabIds).then((previews) => {
+      const validPreviews = Object.fromEntries(Object.entries(previews).filter(([tabId]) => {
+        const numericTabId = Number(tabId);
+        const currentTab = tabsRef.current.find((tab) => tab.id === numericTabId);
+        return previewRequestVersions.current.get(numericTabId) === requestVersion &&
+          currentTab?.url === requestedUrls.get(numericTabId);
+      }));
+      if (Object.keys(validPreviews).length > 0) {
+        setPreviewUrls((current) => ({ ...current, ...validPreviews }));
+      }
+      missingTabIds.forEach((tabId) => {
+        if (!(String(tabId) in previews) && previewRequestVersions.current.get(tabId) === requestVersion) {
+          requestedPreviewIds.current.delete(tabId);
+          requestedPreviewUrls.current.delete(tabId);
+          previewRequestVersions.current.delete(tabId);
+        }
+      });
+    }).catch(() => {
+      missingTabIds.forEach((tabId) => {
+        requestedPreviewIds.current.delete(tabId);
+        requestedPreviewUrls.current.delete(tabId);
+        previewRequestVersions.current.delete(tabId);
+      });
+    });
+  }, []);
+
+  const invalidateTabPreviews = useCallback((tabIds: number[]) => {
+    if (tabIds.length === 0) return;
+    tabIds.forEach((tabId) => {
+      requestedPreviewIds.current.delete(tabId);
+      requestedPreviewUrls.current.delete(tabId);
+      previewRequestVersions.current.delete(tabId);
+    });
+    setPreviewUrls((current) => {
+      const next = { ...current };
+      tabIds.forEach((tabId) => delete next[String(tabId)]);
+      return next;
+    });
+  }, []);
+
   const handleQueryChange = useCallback((value: string) => {
     const requestId = historyRequestIdRef.current + 1;
     historyRequestIdRef.current = requestId;
@@ -102,6 +189,8 @@ export function App({
   });
 
   const handleClose = useCallback(() => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
     setIsClosing(true);
     setTimeout(() => {
       onClose();
@@ -115,6 +204,9 @@ export function App({
     try {
       const tabList = await getTabs();
       if (requestId !== tabsRequestIdRef.current) return;
+      const staleTabIds = stalePreviewTabIds(tabsRef.current, tabList);
+      invalidateTabPreviews(staleTabIds);
+      tabsRef.current = tabList;
       setTabs(tabList);
       if (isSwitcher && initialSwitcherSelectionPending.current && tabList.length > 0) {
         const activeIndex = initialActiveTabId === undefined
@@ -126,7 +218,7 @@ export function App({
     } catch {
       if (requestId === tabsRequestIdRef.current) setTabs([]);
     }
-  }, [isSwitcher, initialActiveTabId]);
+  }, [initialActiveTabId, invalidateTabPreviews, isSwitcher]);
   refreshTabsRef.current = refreshTabs;
 
   useMountEffect(() => {
@@ -145,29 +237,33 @@ export function App({
         ? [
             chrome.tabs.onCreated,
             chrome.tabs.onRemoved,
-            chrome.tabs.onUpdated,
             chrome.tabs.onActivated,
             chrome.windows.onFocusChanged,
           ]
         : [];
+    const handleTabUpdated = (tabId: number, changeInfo: { url?: string }) => {
+      if (changeInfo.url !== undefined) invalidateTabPreviews([tabId]);
+      scheduleRefresh();
+    };
     events.forEach((event) => event.addListener(scheduleRefresh));
+    chrome.tabs?.onUpdated.addListener(handleTabUpdated);
     return () => {
       if (refreshTimer !== undefined) window.clearTimeout(refreshTimer);
       events.forEach((event) => event.removeListener(scheduleRefresh));
+      chrome.tabs?.onUpdated.removeListener(handleTabUpdated);
     };
   });
 
   // Unified message listener for both in-page overlay and new tab page
   useMountEffect(() => {
     const handleMessage = (message: BrowserMessage) => {
-      if (message.type === "update-switcher-preview") {
-        setCurrentPreviewUrl(message.previewUrl);
-      } else if (message.type === "open-palette") {
-        if (message.mode === "switcher") {
+      if (isClosingRef.current) return;
+      if (message.type === "open-palette") {
+        if (message.mode === "bookmarks") {
+          setMode("bookmarks");
+          setIsExpanded(false);
+        } else if (message.mode === "switcher") {
           setMode("switcher");
-          if (message.previewUrl !== undefined) {
-            setCurrentPreviewUrl(message.previewUrl);
-          }
           setIsExpanded(true);
           setSelectedIndex((currentIndex) => {
             const currentTabs = tabsRef.current;
@@ -180,7 +276,6 @@ export function App({
           });
         } else {
           setMode("search");
-          if (message.previewUrl !== undefined) setCurrentPreviewUrl(message.previewUrl);
           setIsExpanded(false);
           handleQueryChange("");
           setTimeout(() => inputRef.current?.focus(), 50);
@@ -270,6 +365,10 @@ export function App({
   // Global keyup/keydown handler for releasing Alt key and cycling in switcher mode
   useMountEffect(() => {
     const handleWindowKeyUp = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Alt" || !isAltModifierActive(event)) {
+        paletteDragModifierRef.current = false;
+        setIsPaletteDragReady(false);
+      }
       if (modeRef.current !== "switcher") return;
       if (event.key === "Alt" || !event.altKey) {
         const currentTabs = tabsRef.current;
@@ -283,6 +382,10 @@ export function App({
     };
 
     const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (isAltModifierActive(event)) {
+        paletteDragModifierRef.current = true;
+        setIsPaletteDragReady(!settingsRef.current.disableMouseCommandPalette);
+      }
       if (event.altKey && (event.key.toLowerCase() === "m" || event.code === "KeyM")) {
         event.preventDefault();
         event.stopPropagation();
@@ -350,12 +453,35 @@ export function App({
   selectedIndexRef.current = activeIndex;
 
   useLayoutEffect(() => {
-    if (!isSwitcher || tabs.length === 0) return;
-    const selectedCard = trackRef.current?.querySelector<HTMLElement>(
-      `[data-switcher-index="${activeIndex}"]`,
-    );
-    selectedCard?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-  }, [activeIndex, isSwitcher, tabs.length]);
+    if (isSwitcher && tabs.length > 0) {
+      const selectedCard = trackRef.current?.querySelector<HTMLElement>(
+        `[data-switcher-index="${activeIndex}"]`,
+      );
+      selectedCard?.scrollIntoView({ behavior: "auto", block: "nearest", inline: "center" });
+      const start = Math.max(0, activeIndex - 3);
+      requestTabPreviews(tabs.slice(start, activeIndex + 5).map((tab) => tab.id));
+      return;
+    }
+
+    const selectedItem = listRef.current?.querySelector<HTMLElement>(`[data-index="${activeIndex}"]`);
+    const list = listRef.current;
+    if (selectedItem && list) {
+      const listRect = list.getBoundingClientRect();
+      const itemRect = selectedItem.getBoundingClientRect();
+      if (itemRect.top < listRect.top) {
+        list.scrollTop -= listRect.top - itemRect.top;
+      } else if (itemRect.bottom > listRect.bottom) {
+        list.scrollTop += itemRect.bottom - listRect.bottom;
+      }
+    }
+
+    if (isGallery) {
+      const start = Math.max(0, activeIndex - 4);
+      requestTabPreviews(results.slice(start, activeIndex + 8).flatMap((result) =>
+        result.kind === "tab" ? [result.tab.id] : []
+      ));
+    }
+  }, [activeIndex, isGallery, isSwitcher, requestTabPreviews, results, tabs]);
 
   const autocompleteFocusedSuggestion = useCallback(() => {
     const result = results[activeIndex];
@@ -421,12 +547,214 @@ export function App({
     }
   }
 
+  const visiblePalettePosition = dragPosition ?? settings.palettePosition;
+
+  // Minimal Search Mode (Command + Shift + P)
+  // By default, initially only shows the search input bar.
+  // Expands only when user types or presses Down arrow.
+  const showDropdown = isExpanded || Boolean(query.trim());
+
+  const startPaletteDrag = useCallback((clientX: number, clientY: number, pointerId: number, moved = false) => {
+    const position = settingsRef.current.palettePosition;
+    paletteDragRef.current = {
+      pointerId,
+      startX: clientX,
+      startY: clientY,
+      startPosition: position,
+      moved,
+    };
+    setDragPosition(position);
+    setDragPreviewCell(dragPreviewCellForPoint({
+      clientX,
+      clientY,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }));
+    setIsDraggingPalette(true);
+  }, []);
+
+  const updatePaletteDrag = useCallback((clientX: number, clientY: number, pointerId: number) => {
+    const drag = paletteDragRef.current;
+    if (!drag || drag.pointerId !== pointerId) return;
+    if (Math.abs(clientX - drag.startX) > 3 || Math.abs(clientY - drag.startY) > 3) drag.moved = true;
+    setDragPosition(nextFreeDragPosition({
+      startX: drag.startX,
+      startY: drag.startY,
+      startPosition: drag.startPosition,
+      clientX,
+      clientY,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }));
+    setDragPreviewCell(dragPreviewCellForPoint({
+      clientX,
+      clientY,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }));
+  }, []);
+
+  const releasePalettePointerCapture = useCallback((pointerId: number) => {
+    try {
+      const card = paletteCardRef.current;
+      if (card?.hasPointerCapture?.(pointerId)) card.releasePointerCapture(pointerId);
+    } catch {
+      // Releasing capture is best-effort; window listeners already track the drag.
+    }
+  }, []);
+
+  const finishPaletteDragAt = useCallback((clientX: number, clientY: number, pointerId: number) => {
+    const drag = paletteDragRef.current;
+    if (!drag || drag.pointerId !== pointerId) return;
+    const card = paletteCardRef.current;
+    const width = card?.getBoundingClientRect().width ?? 640;
+    const height = card?.getBoundingClientRect().height ?? 54;
+    const nextPosition = snapPalettePosition({
+      ...dragPreviewCellForPoint({
+        clientX,
+        clientY,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      }),
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      cardWidth: width,
+      cardHeight: height,
+    });
+    paletteDragRef.current = undefined;
+    pointerDownAnchorRef.current = undefined;
+    releasePalettePointerCapture(pointerId);
+    setIsDraggingPalette(false);
+    setDragPosition(undefined);
+    setDragPreviewCell(undefined);
+    if (drag.moved) {
+      setSettings((current) => ({ ...current, palettePosition: nextPosition }));
+      void saveStoredSettings({ palettePosition: nextPosition }).then(setSettings);
+    }
+  }, [releasePalettePointerCapture]);
+
+  const cancelPaletteDragAt = useCallback((pointerId: number) => {
+    const drag = paletteDragRef.current;
+    if (!drag || drag.pointerId !== pointerId) return;
+    paletteDragRef.current = undefined;
+    pointerDownAnchorRef.current = undefined;
+    releasePalettePointerCapture(pointerId);
+    setIsDraggingPalette(false);
+    setDragPosition(undefined);
+    setDragPreviewCell(undefined);
+  }, [releasePalettePointerCapture]);
+
+  // Track the drag at window level so moves keep arriving even when pointer
+  // capture fails or events retarget outside the card (fast drags, native
+  // input behaviors, shadow-DOM retargeting). Also starts the drag when Alt
+  // is pressed mid-press, so both press orders work.
+  useMountEffect(() => {
+    const handleWindowPointerMove = (event: globalThis.PointerEvent) => {
+      if (paletteDragRef.current) {
+        updatePaletteDrag(event.clientX, event.clientY, event.pointerId);
+        return;
+      }
+      const anchor = pointerDownAnchorRef.current;
+      if (!anchor || anchor.pointerId !== event.pointerId) return;
+      if (!(event.buttons & 1) || anchor.button !== 0) return;
+      if (!isAltModifierActive(event) || settingsRef.current.disableMouseCommandPalette) return;
+      if (Math.abs(event.clientX - anchor.startX) <= 3 && Math.abs(event.clientY - anchor.startY) <= 3) return;
+      startPaletteDrag(event.clientX, event.clientY, event.pointerId, true);
+    };
+    const clearAnchorWithoutDrag = (pointerId: number) => {
+      if (pointerDownAnchorRef.current?.pointerId === pointerId && !paletteDragRef.current) {
+        pointerDownAnchorRef.current = undefined;
+      }
+    };
+    const handleWindowPointerUp = (event: globalThis.PointerEvent) => {
+      clearAnchorWithoutDrag(event.pointerId);
+      finishPaletteDragAt(event.clientX, event.clientY, event.pointerId);
+    };
+    const handleWindowPointerCancel = (event: globalThis.PointerEvent) => {
+      clearAnchorWithoutDrag(event.pointerId);
+      cancelPaletteDragAt(event.pointerId);
+    };
+    const handleWindowBlur = () => {
+      const drag = paletteDragRef.current;
+      paletteDragModifierRef.current = false;
+      setIsPaletteDragReady(false);
+      if (drag) cancelPaletteDragAt(drag.pointerId);
+    };
+    window.addEventListener("pointermove", handleWindowPointerMove);
+    window.addEventListener("pointerup", handleWindowPointerUp);
+    window.addEventListener("pointercancel", handleWindowPointerCancel);
+    window.addEventListener("blur", handleWindowBlur);
+    return () => {
+      window.removeEventListener("pointermove", handleWindowPointerMove);
+      window.removeEventListener("pointerup", handleWindowPointerUp);
+      window.removeEventListener("pointercancel", handleWindowPointerCancel);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  });
+
+  const handlePalettePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button === 0) {
+      pointerDownAnchorRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        button: event.button,
+      };
+    }
+    if (!canStartPaletteDrag({
+      altKey: isAltModifierActive(event) || paletteDragModifierRef.current,
+      button: event.button,
+      mouseDisabled: settingsRef.current.disableMouseCommandPalette,
+    })) return;
+    event.preventDefault();
+    startPaletteDrag(event.clientX, event.clientY, event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is best-effort; window-level listeners keep tracking the drag.
+    }
+  };
+
+  const handlePalettePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (paletteDragRef.current) {
+      updatePaletteDrag(event.clientX, event.clientY, event.pointerId);
+      return;
+    }
+    const altActive = isAltModifierActive(event);
+    if (paletteDragModifierRef.current !== altActive) {
+      paletteDragModifierRef.current = altActive;
+      setIsPaletteDragReady(altActive && !settingsRef.current.disableMouseCommandPalette);
+    }
+  };
+
+  const finishPaletteDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    finishPaletteDragAt(event.clientX, event.clientY, event.pointerId);
+  };
+
+  const cancelPaletteDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    cancelPaletteDragAt(event.pointerId);
+  };
+
+  if (isBookmarks) {
+    return (
+      <BookmarkManager
+        theme={settings.theme}
+        useVibrancy={settings.useVibrancy}
+        disableMouse={settings.disableMouseBookmarks}
+        position={visiblePalettePosition}
+        isClosing={isClosing}
+        onClose={handleClose}
+      />
+    );
+  }
+
   // Visual Horizontal Switcher Mode (Alt + Q)
   if (isSwitcher) {
     return (
       <div
         className={`palette-backdrop switcher-backdrop ${isClosing ? "is-closing" : ""}`}
         data-theme={settings.theme}
+        data-vibrancy={settings.useVibrancy ? "on" : "off"}
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) handleClose();
         }}
@@ -448,7 +776,7 @@ export function App({
                   tab={tab}
                   index={index}
                   isSelected={index === activeIndex}
-                  previewUrl={currentPreviewUrl}
+                  previewUrl={previewUrls[String(tab.id)]}
                   onClick={settings.disableMouseTabSwitcher ? undefined : () => void switchTab(tab)}
                   onMouseEnter={settings.disableMouseTabSwitcher ? undefined : () => setSelectedIndex(index)}
                   onToggleMute={settings.disableMouseTabSwitcher ? undefined : () => void muteTab(tab)}
@@ -461,91 +789,13 @@ export function App({
     );
   }
 
-  // Minimal Search Mode (Command + Shift + P)
-  // By default, initially only shows the search input bar.
-  // Expands only when user types or presses Down arrow.
-  const showDropdown = isExpanded || Boolean(query.trim());
-  const visiblePalettePosition = dragPosition ?? settings.palettePosition;
-
-  const handlePalettePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    const target = event.target instanceof Element ? event.target.closest("input, button") : null;
-    if (
-      settings.disableMouseCommandPalette ||
-      event.button !== 0 ||
-      target !== null
-    ) return;
-    const position = settings.palettePosition;
-    paletteDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      startPosition: position,
-      moved: false,
-    };
-    setDragPosition(position);
-    setDragPreviewCell({
-      column: Math.min(2, Math.max(0, Math.floor((event.clientX / window.innerWidth) * 3))),
-      row: Math.min(2, Math.max(0, Math.floor((event.clientY / window.innerHeight) * 3))),
-    });
-    event.currentTarget.setPointerCapture(event.pointerId);
-    setIsDraggingPalette(true);
-  };
-
-  const handlePalettePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = paletteDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const deltaX = event.clientX - drag.startX;
-    const deltaY = event.clientY - drag.startY;
-    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) drag.moved = true;
-    const nextPosition = {
-      x: Math.min(1, Math.max(0, drag.startPosition.x + deltaX / window.innerWidth)),
-      y: Math.min(1, Math.max(0, drag.startPosition.y + deltaY / window.innerHeight)),
-    };
-    setDragPosition(nextPosition);
-    setDragPreviewCell({
-      column: Math.min(2, Math.max(0, Math.floor((event.clientX / window.innerWidth) * 3))),
-      row: Math.min(2, Math.max(0, Math.floor((event.clientY / window.innerHeight) * 3))),
-    });
-  };
-
-  const finishPaletteDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = paletteDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    const card = paletteCardRef.current;
-    const column = Math.min(2, Math.max(0, Math.floor((event.clientX / window.innerWidth) * 3)));
-    const row = Math.min(2, Math.max(0, Math.floor((event.clientY / window.innerHeight) * 3)));
-    const width = card?.getBoundingClientRect().width ?? 640;
-    const height = card?.getBoundingClientRect().height ?? 54;
-    const x = Math.min(1 - width / (window.innerWidth * 2), Math.max(width / (window.innerWidth * 2), (column + 0.5) / 3));
-    const y = Math.min(
-      1 - height / window.innerHeight,
-      Math.max(0, (row + 0.5) / 3 - height / (window.innerHeight * 2)),
-    );
-    const nextPosition = { x, y };
-    paletteDragRef.current = undefined;
-    setIsDraggingPalette(false);
-    setDragPosition(undefined);
-    setDragPreviewCell(undefined);
-    if (drag.moved) {
-      setSettings((current) => ({ ...current, palettePosition: nextPosition }));
-      void saveStoredSettings({ palettePosition: nextPosition }).then(setSettings);
-    }
-  };
-
-  const cancelPaletteDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    const drag = paletteDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    paletteDragRef.current = undefined;
-    setIsDraggingPalette(false);
-    setDragPosition(undefined);
-    setDragPreviewCell(undefined);
-  };
-
   return (
     <div
       className={`palette-backdrop ${isClosing ? "is-closing" : ""}`}
       data-theme={settings.theme}
+      data-vibrancy={settings.useVibrancy ? "on" : "off"}
       onMouseDown={(event) => {
+        if (event.altKey) return;
         if (event.target === event.currentTarget) handleClose();
       }}
     >
@@ -561,19 +811,35 @@ export function App({
       )}
       <div
         ref={paletteCardRef}
-        className={`palette-card ${showDropdown ? "is-expanded" : ""} ${isGallery && showDropdown ? "is-gallery-view" : ""} ${isClosing ? "is-closing" : ""} ${isDraggingPalette ? "is-dragging" : ""}`}
+        className={`palette-card ${showDropdown ? "is-expanded" : ""} ${isGallery && showDropdown ? "is-gallery-view" : ""} ${isClosing ? "is-closing" : ""} ${isPaletteDragReady ? "is-drag-ready" : ""} ${isDraggingPalette ? "is-dragging" : ""}`}
         style={{ left: `${visiblePalettePosition.x * 100}%`, top: `${visiblePalettePosition.y * 100}%` }}
         role="dialog"
         aria-modal="true"
+        onPointerDownCapture={handlePalettePointerDown}
+        onPointerMoveCapture={handlePalettePointerMove}
+        onPointerUpCapture={finishPaletteDrag}
+        onPointerCancelCapture={cancelPaletteDrag}
+        onClickCapture={(event) => {
+          // Alt+click is a drag gesture, never an activation: block buttons,
+          // clear/expand toggles, and rows from firing while Alt is held.
+          if (isAltModifierActive(event) || paletteDragModifierRef.current) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
+        onPointerEnter={(event) => {
+          const altActive = isAltModifierActive(event);
+          paletteDragModifierRef.current = altActive;
+          setIsPaletteDragReady(altActive && !settingsRef.current.disableMouseCommandPalette);
+        }}
+        onPointerLeave={() => {
+          if (paletteDragRef.current) return;
+          paletteDragModifierRef.current = false;
+          setIsPaletteDragReady(false);
+        }}
       >
         {/* Elevated 3D Search Bar Input Row */}
-        <div
-          className="search-bar-row"
-          onPointerDown={handlePalettePointerDown}
-          onPointerMove={handlePalettePointerMove}
-          onPointerUp={finishPaletteDrag}
-          onPointerCancel={cancelPaletteDrag}
-        >
+        <div className="search-bar-row">
           <SearchIcon size={17} className="search-lead-icon" />
           <input
             ref={inputRef}
@@ -638,7 +904,7 @@ export function App({
                     tab={result.tab}
                     index={index}
                     isSelected={index === activeIndex}
-                    previewUrl={currentPreviewUrl}
+                    previewUrl={previewUrls[String(result.tab.id)]}
                     onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                     onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
                     onToggleMute={settings.disableMouseCommandPalette ? undefined : () => void muteTab(result.tab)}

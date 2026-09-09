@@ -15,7 +15,8 @@ export function Popup() {
   const defaultSearchShortcut = isMac ? "⌘⇧P" : "Ctrl Shift P";
   const defaultSwitcherShortcut = isMac ? "⌥Q" : "Alt Q";
   const defaultPinShortcut = isMac ? "⌘K" : "Alt K";
-  const defaultMuteShortcut = isMac ? "⌥M" : "Alt M";
+  const defaultBookmarksShortcut = isMac ? "⌥B" : "Alt B";
+  const movePaletteShortcut = isMac ? "⌥ + drag" : "Alt + drag";
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
     ? chrome.runtime.getManifest().version
     : "0.1.6";
@@ -53,7 +54,7 @@ export function Popup() {
     { label: "Search tabs", command: "open-palette" as const, fallback: defaultSearchShortcut },
     { label: "Visual switcher", command: "open-tab-switcher" as const, fallback: defaultSwitcherShortcut },
     { label: "Pin selected tab", command: "pin-tab" as const, fallback: defaultPinShortcut },
-    { label: "Mute selected tab", command: "mute-tab" as const, fallback: defaultMuteShortcut },
+    { label: "Bookmark manager", command: "open-bookmarks" as const, fallback: defaultBookmarksShortcut },
   ];
   const unsetCommands = shortcutRows.filter((row) => !shortcuts[row.command]);
 
@@ -138,6 +139,21 @@ export function Popup() {
         </label>
       </section>
 
+      <section className="popup-section" aria-labelledby="appearance-label">
+        <div className="popup-section-heading">
+          <span id="appearance-label">Appearance</span>
+          <span className="popup-section-context">Overlays</span>
+        </div>
+        <label className="popup-toggle-row">
+          <span>Background vibrancy</span>
+          <input
+            type="checkbox"
+            checked={settings.useVibrancy}
+            onChange={(event) => void updateSetting("useVibrancy", event.target.checked)}
+          />
+        </label>
+      </section>
+
       <section className="popup-section" aria-labelledby="tab-switching-label">
         <div className="popup-section-heading">
           <span id="tab-switching-label">Tab switching</span>
@@ -179,6 +195,14 @@ export function Popup() {
             onChange={(event) => void updateSetting("disableMouseCommandPalette", event.target.checked)}
           />
         </label>
+        <label className="popup-toggle-row">
+          <span>Bookmarks</span>
+          <input
+            type="checkbox"
+            checked={settings.disableMouseBookmarks}
+            onChange={(event) => void updateSetting("disableMouseBookmarks", event.target.checked)}
+          />
+        </label>
       </section>
 
       <section className="popup-shortcuts" aria-label="Keyboard shortcuts">
@@ -206,6 +230,12 @@ export function Popup() {
             </span>
           </div>
         ))}
+        <div className="popup-shortcut-row">
+          <span>Move command palette</span>
+          <span className="popup-key-group">
+            <kbd>{movePaletteShortcut}</kbd>
+          </span>
+        </div>
       </section>
 
       <footer className="popup-footer-bar">

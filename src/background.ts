@@ -1,17 +1,13 @@
+import { parsePreviewEntries, retainOpenTabPreviews, type PreviewEntry } from "./previewCache";
 import { getStoredSettings, pinnedTabIdentity, saveStoredSettings } from "./settings";
-import type { BrowserMessage, PaletteTab } from "./types";
+import type { BookmarkItem, BrowserMessage, PaletteTab } from "./types";
 
-type PreviewEntry = {
-  tabId: number;
-  url: string;
-  dataUrl: string;
-  capturedAt: number;
-};
-
-const PREVIEW_CACHE_KEY = "recent-tab-previews";
-const PREVIEW_TTL_MS = 24 * 60 * 60 * 1000;
-const MAX_PREVIEW_COUNT = 24;
-const MAX_PREVIEW_CHARACTERS = 9_000_000;
+const LEGACY_PREVIEW_CACHE_KEY = "recent-tab-previews";
+const LEGACY_PREVIEW_CACHE_PREFIX = "tab-preview:";
+const PREVIEW_CACHE_PREFIX = "tab-preview-v2:";
+const PREVIEW_CAPTURE_INTERVAL_MS = 550;
+const PREVIEW_MAX_WIDTH = 640;
+const PREVIEW_MAX_HEIGHT = 400;
 const HISTORY_CACHE_LIMIT = 100;
 
 type HistoryResult = {
@@ -36,6 +32,8 @@ function enqueuePinUpdate(update: () => Promise<void>) {
 }
 
 const previewCache = new Map<number, PreviewEntry>();
+const overlayTabIds = new Set<number>();
+let lastPreviewCaptureStartedAt = 0;
 
 function hostnameFor(url?: string) {
   if (!url) return "";
@@ -46,115 +44,119 @@ function hostnameFor(url?: string) {
   }
 }
 
-function parsePreviewEntries(value: unknown) {
-  if (!Array.isArray(value)) return [];
-
-  return value.filter((entry): entry is PreviewEntry =>
-    typeof entry === "object" &&
-    entry !== null &&
-    "tabId" in entry &&
-    typeof entry.tabId === "number" &&
-    "url" in entry &&
-    typeof entry.url === "string" &&
-    "dataUrl" in entry &&
-    typeof entry.dataUrl === "string" &&
-    "capturedAt" in entry &&
-    typeof entry.capturedAt === "number"
-  );
+function previewStorageKey(tabId: number) {
+  return `${PREVIEW_CACHE_PREFIX}${tabId}`;
 }
 
-function prunePreviewCache(now = Date.now()) {
-  const previousTabIds = new Set(previewCache.keys());
-  const recentEntries = [...previewCache.values()]
-    .filter((entry) => now - entry.capturedAt < PREVIEW_TTL_MS)
-    .sort((a, b) => b.capturedAt - a.capturedAt);
-
-  previewCache.clear();
-  let totalCharacters = 0;
-
-  for (const entry of recentEntries) {
-    if (previewCache.size >= MAX_PREVIEW_COUNT) break;
-    if (totalCharacters + entry.dataUrl.length > MAX_PREVIEW_CHARACTERS) continue;
-    previewCache.set(entry.tabId, entry);
-    totalCharacters += entry.dataUrl.length;
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  const chunkSize = 32_768;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
   }
-
-  return previousTabIds.size !== previewCache.size ||
-    [...previousTabIds].some((tabId) => !previewCache.has(tabId));
+  return btoa(binary);
 }
 
-async function writePreviewCache() {
+async function compactPreview(dataUrl: string) {
   try {
-    await chrome.storage.session.set({
-      [PREVIEW_CACHE_KEY]: [...previewCache.values()],
-    });
+    const source = await createImageBitmap(await (await fetch(dataUrl)).blob());
+    const scale = Math.min(1, PREVIEW_MAX_WIDTH / source.width, PREVIEW_MAX_HEIGHT / source.height);
+    const width = Math.max(1, Math.round(source.width * scale));
+    const height = Math.max(1, Math.round(source.height * scale));
+    const canvas = new OffscreenCanvas(width, height);
+    const context = canvas.getContext("2d", { alpha: false });
+    if (!context) {
+      source.close();
+      return null;
+    }
+    context.drawImage(source, 0, 0, width, height);
+    source.close();
+    const blob = await canvas.convertToBlob({ type: "image/webp", quality: 0.82 });
+    return `data:image/webp;base64,${bytesToBase64(new Uint8Array(await blob.arrayBuffer()))}`;
+  } catch {
+    return null;
+  }
+}
+
+async function persistPreview(entry: PreviewEntry) {
+  try {
+    await chrome.storage.session.set({ [previewStorageKey(entry.tabId)]: entry });
   } catch {
     // The in-memory cache remains usable if session storage is unavailable.
   }
 }
 
-async function persistPreviewCache() {
-  await previewCacheReady;
-  prunePreviewCache();
-  await writePreviewCache();
-}
-
 const previewCacheReady = chrome.storage.session
-  .get(PREVIEW_CACHE_KEY)
+  .get(null)
   .then(async (stored) => {
-    const entries = parsePreviewEntries(stored[PREVIEW_CACHE_KEY]);
-    entries.forEach((entry) => previewCache.set(entry.tabId, entry));
-    if (prunePreviewCache()) await writePreviewCache();
+    const keyedEntries = Object.entries(stored).flatMap(([key, value]) =>
+      key.startsWith(PREVIEW_CACHE_PREFIX) ? parsePreviewEntries([value]) : []
+    );
+    keyedEntries.forEach((entry) => previewCache.set(entry.tabId, entry));
+
+    // Version 1 previews may contain the palette itself and used a much lower
+    // quality encode. Drop them instead of carrying bad images forward.
+    const obsoletePreviewKeys = Object.keys(stored).filter((key) =>
+      key === LEGACY_PREVIEW_CACHE_KEY || key.startsWith(LEGACY_PREVIEW_CACHE_PREFIX)
+    );
+    if (obsoletePreviewKeys.length > 0) {
+      await chrome.storage.session.remove(obsoletePreviewKeys);
+    }
   })
   .catch(() => {});
 
 async function removeCachedPreview(tabId: number) {
   await previewCacheReady;
   previewCache.delete(tabId);
-  await persistPreviewCache();
+  await chrome.storage.session.remove(previewStorageKey(tabId)).catch(() => undefined);
 }
 
 async function capturePreview(tabId: number, windowId: number) {
   await previewCacheReady;
 
   try {
-    const [tab, window] = await Promise.all([
-      chrome.tabs.get(tabId),
-      chrome.windows.get(windowId),
-    ]);
-    if (!tab.active || !window.focused || !tab.url) return;
+    const tab = await chrome.tabs.get(tabId);
+    if (overlayTabIds.has(tabId) || !tab.active || tab.discarded || !tab.url) return null;
 
-    const dataUrl = await chrome.tabs.captureVisibleTab(windowId, {
-      format: "jpeg",
-      quality: 35,
-    });
+    const capturedDataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
     const currentTab = await chrome.tabs.get(tabId);
-    const currentWindow = await chrome.windows.get(windowId);
-    if (!dataUrl || currentTab.url !== tab.url || !currentTab.active || !currentWindow.focused) {
-      previewCache.delete(tabId);
-      await persistPreviewCache();
-      return;
-    }
+    if (overlayTabIds.has(tabId) || !capturedDataUrl || currentTab.url !== tab.url || !currentTab.active) return null;
 
-    previewCache.set(tabId, {
+    const capturedAt = Date.now();
+    const entry = {
       tabId,
-      url: currentTab.url ?? tab.url,
-      dataUrl,
-      capturedAt: Date.now(),
-    });
-    await persistPreviewCache();
+      url: tab.url,
+      dataUrl: capturedDataUrl,
+      capturedAt,
+    };
+    previewCache.set(tabId, entry);
+
+    // Make the raw preview available immediately. Compression and storage are
+    // background work so they cannot delay the switcher or its repeat rate.
+    void compactPreview(capturedDataUrl).then(async (dataUrl) => {
+      if (dataUrl === null) return;
+      const currentEntry = previewCache.get(tabId);
+      if (currentEntry?.capturedAt !== capturedAt || currentEntry.url !== tab.url) return;
+      const compactedEntry = { ...entry, dataUrl };
+      previewCache.set(tabId, compactedEntry);
+      await persistPreview(compactedEntry);
+    }).catch(() => undefined);
+    return entry;
   } catch {
     // Restricted browser pages and closed tabs cannot be captured.
+    return null;
   }
 }
 
 async function sendToTab(tab: chrome.tabs.Tab, message: BrowserMessage) {
-  if (tab.id === undefined) return;
+  if (tab.id === undefined) return false;
   try {
     await chrome.tabs.sendMessage(tab.id, message);
+    return true;
   } catch {
     // Content scripts run declaratively on regular web pages. Browser-owned
     // pages and tabs opened before an extension reload cannot host the palette.
+    return false;
   }
 }
 
@@ -235,13 +237,18 @@ async function getTabs(): Promise<PaletteTab[]> {
       await saveStoredSettings({ pinnedTabs: migratedTabs });
     });
   }
-  if (prunePreviewCache()) await writePreviewCache();
+  const retainedPreviews = retainOpenTabPreviews(previewCache.values(), browserTabs);
+  const retainedTabIds = new Set(retainedPreviews.map((entry) => entry.tabId));
+  const staleTabIds = [...previewCache.keys()].filter((tabId) => !retainedTabIds.has(tabId));
+  staleTabIds.forEach((tabId) => previewCache.delete(tabId));
+  if (staleTabIds.length > 0) {
+    void chrome.storage.session.remove(staleTabIds.map(previewStorageKey)).catch(() => undefined);
+  }
 
   const focusedWindows = new Set(windows.filter((window) => window.focused).map((window) => window.id));
 
   return browserTabs
     .map((tab) => {
-      const preview = previewCache.get(tab.id);
       return {
         id: tab.id,
         windowId: tab.windowId,
@@ -250,7 +257,6 @@ async function getTabs(): Promise<PaletteTab[]> {
         hostname: hostnameFor(tab.url),
         index: tab.index,
         faviconUrl: tab.favIconUrl,
-        previewUrl: preview && preview.url === tab.url ? preview.dataUrl : undefined,
         active: Boolean(tab.active),
         windowFocused: focusedWindows.has(tab.windowId),
         pinned: pinnedTabs.some((pinnedTab) => {
@@ -276,12 +282,48 @@ chrome.history.onVisited.addListener(invalidateHistoryCache);
 chrome.history.onVisitRemoved.addListener(invalidateHistoryCache);
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  overlayTabIds.delete(tabId);
   void removeCachedPreview(tabId);
 });
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.url !== undefined) void removeCachedPreview(tabId);
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === "loading" || changeInfo.url !== undefined) {
+    overlayTabIds.delete(tabId);
+    void removeCachedPreview(tabId);
+  }
 });
+
+function bookmarkFaviconUrl(url: string) {
+  try {
+    return url.startsWith("http")
+      ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(new URL(url).hostname)}&sz=32`
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function flattenBookmarks(nodes: chrome.bookmarks.BookmarkTreeNode[], folderPath: string[] = []): BookmarkItem[] {
+  return nodes.flatMap((node) => {
+    const nextPath = node.title ? [...folderPath, node.title] : folderPath;
+    if (node.url) {
+      return [{
+        id: node.id,
+        title: node.title.trim() || node.url,
+        url: node.url,
+        folderPath,
+        dateAdded: node.dateAdded,
+        ...(bookmarkFaviconUrl(node.url) ? { faviconUrl: bookmarkFaviconUrl(node.url) } : {}),
+      }];
+    }
+    return node.children ? flattenBookmarks(node.children, nextPath) : [];
+  });
+}
+
+async function getBookmarks(): Promise<BookmarkItem[]> {
+  const tree = await chrome.bookmarks.getTree();
+  return flattenBookmarks(tree).sort((a, b) => (b.dateAdded ?? 0) - (a.dateAdded ?? 0));
+}
 
 async function openSearchPalette() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
@@ -289,32 +331,43 @@ async function openSearchPalette() {
 
   // Search mode does not need a fresh screenshot. Open it immediately and let
   // the switcher own screenshot capture, so the command never feels delayed.
-  await sendToTab(tab, { type: "open-palette", mode: "search" });
+  if (tab.id !== undefined) overlayTabIds.add(tab.id);
+  const opened = await sendToTab(tab, { type: "open-palette", mode: "search" });
+  if (!opened && tab.id !== undefined) overlayTabIds.delete(tab.id);
 }
 
+let switcherOpenInFlight = false;
+
 async function openTabSwitcher() {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (!tab) return;
+  if (switcherOpenInFlight) return;
+  switcherOpenInFlight = true;
 
-  // Capture before mounting the switcher. Capturing after it opens includes the
-  // switcher itself in the thumbnail, which is especially confusing on repeat use.
-  if (tab.id !== undefined && tab.windowId !== undefined) {
-    await capturePreview(tab.id, tab.windowId);
-  }
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (!tab) return;
 
-  const [currentTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const preview = tab.id !== undefined ? previewCache.get(tab.id) : undefined;
-  const previewUrl = currentTab?.id === tab.id && currentTab.url === preview?.url
-    ? preview?.dataUrl
-    : undefined;
+    // Capture only when the active tab has no valid cached preview. The raw
+    // frame is available before compression, and overlapping shortcut events
+    // are dropped instead of queued for delivery after Alt is released.
+    await previewCacheReady;
+    const cachedPreview = tab.id !== undefined ? previewCache.get(tab.id) : undefined;
+    const canCaptureNow = Date.now() - lastPreviewCaptureStartedAt >= PREVIEW_CAPTURE_INTERVAL_MS;
+    if (tab.id !== undefined && cachedPreview?.url !== tab.url && canCaptureNow) {
+      lastPreviewCaptureStartedAt = Date.now();
+      await capturePreview(tab.id, tab.windowId);
+    }
 
-  if (currentTab) {
-    await sendToTab(currentTab, {
+    // getTabs supplies every cached preview in one response after mount. Keep
+    // this command message small instead of sending the active image twice.
+    if (tab.id !== undefined) overlayTabIds.add(tab.id);
+    const opened = await sendToTab(tab, {
       type: "open-palette",
       mode: "switcher",
-      previewUrl,
-      activeTabId: currentTab.id,
+      activeTabId: tab.id,
     });
+    if (!opened && tab.id !== undefined) overlayTabIds.delete(tab.id);
+  } finally {
+    switcherOpenInFlight = false;
   }
 }
 
@@ -323,13 +376,42 @@ chrome.commands.onCommand.addListener((command) => {
   if (command === "open-tab-switcher") void openTabSwitcher();
   if (command === "pin-tab") void sendToActiveTab({ type: "request-pin-selected-tab" });
   if (command === "mute-tab") void sendToActiveTab({ type: "request-mute-selected-tab" });
+  if (command === "open-bookmarks") void sendToActiveTab({ type: "open-palette", mode: "bookmarks" });
 });
 
 chrome.action.onClicked.addListener(() => void openSearchPalette());
 
-chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: BrowserMessage, sender, sendResponse) => {
+  if (message.type === "palette-opened") {
+    if (sender.tab?.id !== undefined) overlayTabIds.add(sender.tab.id);
+    return false;
+  }
+
+  if (message.type === "palette-closed") {
+    if (sender.tab?.id !== undefined) overlayTabIds.delete(sender.tab.id);
+    return false;
+  }
+
   if (message.type === "get-tabs") {
     void getTabs().then(sendResponse);
+    return true;
+  }
+
+  if (message.type === "get-bookmarks") {
+    void getBookmarks().then(sendResponse);
+    return true;
+  }
+
+  if (message.type === "get-tab-previews") {
+    const tabIds = message.tabIds
+      .filter((tabId) => Number.isInteger(tabId) && tabId > 0)
+      .slice(0, 12);
+    void previewCacheReady.then(() => {
+      sendResponse(Object.fromEntries(tabIds.flatMap((tabId) => {
+        const preview = previewCache.get(tabId);
+        return preview ? [[String(tabId), preview.dataUrl]] : [];
+      })));
+    });
     return true;
   }
 
@@ -359,6 +441,11 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResp
       await saveStoredSettings({ pinnedTabs });
     });
     void operation.then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message.type === "open-bookmark") {
+    void chrome.tabs.create({ url: message.url }).then(() => sendResponse({ ok: true }));
     return true;
   }
 

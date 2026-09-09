@@ -7,7 +7,7 @@ import "./styles.css";
 
 function NewTabPage() {
   const [isOpen, setIsOpen] = useState(false);
-  const [mode, setMode] = useState<"search" | "switcher">("search");
+  const [mode, setMode] = useState<"search" | "switcher" | "bookmarks">("search");
   const [activeTabId, setActiveTabId] = useState<number | undefined>();
   const isOpenRef = useRef(isOpen);
   isOpenRef.current = isOpen;
@@ -36,6 +36,10 @@ function NewTabPage() {
         } else if (e.altKey && e.key.toLowerCase() === "q") {
           e.preventDefault();
           setMode("switcher");
+          setIsOpen(true);
+        } else if (e.altKey && e.key.toLowerCase() === "b") {
+          e.preventDefault();
+          setMode("bookmarks");
           setIsOpen(true);
         }
       }
