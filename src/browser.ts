@@ -1,5 +1,5 @@
 import { pinnedTabIdentity } from "./settings";
-import type { BrowserMessage, PaletteTab, PinnedTab } from "./types";
+import type { BookmarkItem, BrowserMessage, PaletteTab, PinnedTab } from "./types";
 
 export type BrowserHistoryItem = {
   id: string;
@@ -11,6 +11,14 @@ export type BrowserHistoryItem = {
 
 export async function getTabs(): Promise<PaletteTab[]> {
   return chrome.runtime.sendMessage({ type: "get-tabs" } satisfies BrowserMessage);
+}
+
+export async function getBookmarks(): Promise<BookmarkItem[]> {
+  return chrome.runtime.sendMessage({ type: "get-bookmarks" } satisfies BrowserMessage);
+}
+
+export async function openBookmark(url: string) {
+  await chrome.runtime.sendMessage({ type: "open-bookmark", url } satisfies BrowserMessage);
 }
 
 export function notifyPaletteOpened() {

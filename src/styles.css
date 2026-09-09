@@ -284,6 +284,264 @@ button {
   animation: backdrop-exit 130ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
 }
 
+/* ========================================================================
+   Bookmark Manager (Alt + B)
+   ========================================================================== */
+
+.bookmark-card {
+  position: absolute;
+  z-index: 2;
+  transform: translateX(-50%);
+  width: min(calc(100vw - 32px), 600px);
+  max-height: min(80vh, 600px);
+  background: var(--bg-panel);
+  backdrop-filter: blur(40px) saturate(190%);
+  -webkit-backdrop-filter: blur(40px) saturate(190%);
+  border: 1px solid var(--border-panel);
+  border-radius: 16px;
+  box-shadow:
+    0 4px 20px -2px rgba(0, 0, 0, 0.5),
+    0 24px 70px -12px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transform-origin: top center;
+  will-change: transform, opacity, box-shadow;
+  animation: bookmark-card-entry 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transition:
+    box-shadow 160ms ease,
+    border-color 140ms ease;
+}
+
+.bookmark-card.is-closing {
+  animation: palette-card-exit 120ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+@keyframes bookmark-card-entry {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) scale(0.97) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) scale(1) translateY(0);
+  }
+}
+
+/* Inline Folder Scope Pill */
+.bookmark-scope-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-secondary);
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  transition:
+    color 100ms ease,
+    background-color 100ms ease,
+    border-color 100ms ease,
+    transform 80ms ease;
+}
+
+.bookmark-scope-pill:hover {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+  border-color: var(--border-panel);
+}
+
+.bookmark-scope-pill:active {
+  transform: scale(0.97);
+}
+
+.bookmark-scope-icon {
+  color: var(--text-muted);
+  opacity: 0.8;
+  transition: color 100ms ease;
+}
+
+.bookmark-scope-pill:hover .bookmark-scope-icon {
+  color: var(--accent-primary);
+}
+
+.bookmark-scope-arrow {
+  font-size: 8px;
+  color: var(--text-muted);
+  margin-left: 1px;
+}
+
+/* Bookmarks List */
+.bookmark-list {
+  max-height: min(400px, calc(75vh - 90px));
+  min-height: 80px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 4px;
+  padding: 4px 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.bookmark-list::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Individual Bookmark Row */
+.bookmark-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: var(--text-primary);
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color 80ms ease,
+    border-color 80ms ease;
+}
+
+.bookmark-row:hover {
+  background: var(--bg-card-hover);
+}
+
+.bookmark-row.selected {
+  background: var(--bg-selected);
+  border-color: var(--border-selected);
+}
+
+.bookmark-row-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.bookmark-favicon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bookmark-favicon img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
+}
+
+.bookmark-favicon-fallback {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bookmark-title {
+  font-size: 13.5px;
+  font-weight: 450;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookmark-row.selected .bookmark-title {
+  font-weight: 550;
+}
+
+.bookmark-row-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.bookmark-domain {
+  font-size: 12px;
+  color: var(--text-muted);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.bookmark-return-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 100ms ease;
+}
+
+.bookmark-row.selected .bookmark-return-hint {
+  opacity: 1;
+  color: var(--text-primary);
+}
+
+/* Empty State */
+.bookmark-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 36px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.bookmark-empty-state span {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.bookmark-count-pill {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border-card);
+  padding: 2px 7px;
+  border-radius: 6px;
+  line-height: 1.2;
+  user-select: none;
+  flex-shrink: 0;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
 /* ==========================================================================
    Horizontal Thumbnail Switcher HUD (Alt + Q)
    ========================================================================== */
@@ -1549,6 +1807,13 @@ kbd {
     border-color: var(--border-selected);
   }
 
+  .palette-backdrop[data-theme="default"] .bookmark-card {
+    box-shadow:
+      0 4px 20px -2px rgba(0, 0, 0, 0.08),
+      0 24px 70px -12px rgba(0, 0, 0, 0.16),
+      inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  }
+
   .palette-backdrop[data-theme="default"] .clear-icon-btn,
   .palette-backdrop[data-theme="default"] .expand-toggle-btn {
     color: var(--text-muted);
@@ -1561,24 +1826,31 @@ kbd {
 }
 
 .palette-backdrop[data-vibrancy="on"] {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(0, 0, 0, 0.45);
 }
 
-.palette-backdrop[data-vibrancy="on"] .palette-card {
-  background: color-mix(in srgb, var(--bg-canvas) 74%, transparent);
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
+.palette-backdrop[data-vibrancy="on"] .palette-card,
+.palette-backdrop[data-vibrancy="on"] .bookmark-card {
+  background: color-mix(in srgb, var(--bg-panel) 82%, transparent);
+  backdrop-filter: blur(42px) saturate(190%) contrast(105%);
+  -webkit-backdrop-filter: blur(42px) saturate(190%) contrast(105%);
+  box-shadow:
+    0 4px 20px -2px rgba(0, 0, 0, 0.5),
+    0 24px 70px -12px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
 }
 
 .palette-backdrop[data-vibrancy="on"] .switcher-hud {
-  background: color-mix(in srgb, var(--bg-canvas) 70%, transparent);
-  backdrop-filter: blur(20px) saturate(165%);
-  -webkit-backdrop-filter: blur(20px) saturate(165%);
+  background: color-mix(in srgb, var(--bg-hud) 80%, transparent);
+  backdrop-filter: blur(44px) saturate(190%) contrast(105%);
+  -webkit-backdrop-filter: blur(44px) saturate(190%) contrast(105%);
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .palette-backdrop[data-vibrancy="on"] .palette-card {
+  .palette-backdrop[data-vibrancy="on"] .palette-card,
+  .palette-backdrop[data-vibrancy="on"] .bookmark-card {
     background: var(--bg-panel);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -1595,9 +1867,12 @@ kbd {
   .palette-backdrop,
   .switcher-hud,
   .palette-card,
+  .bookmark-card,
   .palette-divider,
   .item-list,
-  .empty-state {
+  .bookmark-list,
+  .empty-state,
+  .bookmark-empty-state {
     animation: none;
   }
 

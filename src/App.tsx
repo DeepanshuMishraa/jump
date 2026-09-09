@@ -10,6 +10,7 @@ import { DEFAULT_SETTINGS, getStoredSettings, pinnedTabIdentity, saveStoredSetti
 import { useMountEffect } from "./hooks/useMountEffect";
 import { TabFavicon, TabSoundIndicator } from "./components/TabVisuals";
 import { GalleryCard, SwitcherCard } from "./components/TabCards";
+import { BookmarkManager } from "./components/BookmarkManager";
 import type { BrowserMessage, PalettePosition, PaletteTab, UserSettings } from "./types";
 
 export function App({
@@ -18,7 +19,7 @@ export function App({
   initialActiveTabId,
 }: {
   onClose: () => void;
-  initialMode?: "search" | "switcher";
+  initialMode?: "search" | "switcher" | "bookmarks";
   initialActiveTabId?: number;
 }) {
   const [tabs, setTabs] = useState<PaletteTab[]>([]);
@@ -26,7 +27,7 @@ export function App({
   const [recentBrowserHistory, setRecentBrowserHistory] = useState<BrowserHistoryItem[]>([]);
   const [browserHistory, setBrowserHistory] = useState<BrowserHistoryItem[]>([]);
   const [query, setQuery] = useState("");
-  const [mode, setMode] = useState<"search" | "switcher">(initialMode);
+  const [mode, setMode] = useState<"search" | "switcher" | "bookmarks">(initialMode);
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const requestedPreviewIds = useRef(new Set<number>());
@@ -56,6 +57,7 @@ export function App({
   settingsRef.current = settings;
 
   const isSwitcher = mode === "switcher";
+  const isBookmarks = mode === "bookmarks";
   const isGallery = settings.viewMode === "gallery";
   const [isExpanded, setIsExpanded] = useState(isSwitcher);
   const [selectedIndex, setSelectedIndex] = useState(isSwitcher ? 1 : 0);
@@ -257,7 +259,10 @@ export function App({
     const handleMessage = (message: BrowserMessage) => {
       if (isClosingRef.current) return;
       if (message.type === "open-palette") {
-        if (message.mode === "switcher") {
+        if (message.mode === "bookmarks") {
+          setMode("bookmarks");
+          setIsExpanded(false);
+        } else if (message.mode === "switcher") {
           setMode("switcher");
           setIsExpanded(true);
           setSelectedIndex((currentIndex) => {
@@ -542,6 +547,21 @@ export function App({
     }
   }
 
+  const visiblePalettePosition = dragPosition ?? settings.palettePosition;
+
+  if (isBookmarks) {
+    return (
+      <BookmarkManager
+        theme={settings.theme}
+        useVibrancy={settings.useVibrancy}
+        disableMouse={settings.disableMouseCommandPalette}
+        position={visiblePalettePosition}
+        isClosing={isClosing}
+        onClose={handleClose}
+      />
+    );
+  }
+
   // Visual Horizontal Switcher Mode (Alt + Q)
   if (isSwitcher) {
     return (
@@ -587,7 +607,6 @@ export function App({
   // By default, initially only shows the search input bar.
   // Expands only when user types or presses Down arrow.
   const showDropdown = isExpanded || Boolean(query.trim());
-  const visiblePalettePosition = dragPosition ?? settings.palettePosition;
 
   const startPaletteDrag = useCallback((clientX: number, clientY: number, pointerId: number, moved = false) => {
     const position = settingsRef.current.palettePosition;

@@ -9,7 +9,7 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "permissions": ["activeTab", "tabs", "windows", "storage", "search", "history"],
+  "permissions": ["activeTab", "tabs", "windows", "storage", "search", "history", "bookmarks"],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
@@ -53,12 +53,12 @@
       },
       "description": "Pin or unpin the selected tab"
     },
-    "mute-tab": {
+    "open-bookmarks": {
       "suggested_key": {
-        "default": "Alt+M",
-        "mac": "Alt+M"
+        "default": "Alt+B",
+        "mac": "Alt+B"
       },
-      "description": "Mute or unmute the selected tab in the command palette"
+      "description": "Open the bookmark manager"
     }
   }
 }

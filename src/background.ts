@@ -1,6 +1,6 @@
 import { parsePreviewEntries, retainOpenTabPreviews, type PreviewEntry } from "./previewCache";
 import { getStoredSettings, pinnedTabIdentity, saveStoredSettings } from "./settings";
-import type { BrowserMessage, PaletteTab } from "./types";
+import type { BookmarkItem, BrowserMessage, PaletteTab } from "./types";
 
 const LEGACY_PREVIEW_CACHE_KEY = "recent-tab-previews";
 const LEGACY_PREVIEW_CACHE_PREFIX = "tab-preview:";
@@ -293,6 +293,38 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
+function bookmarkFaviconUrl(url: string) {
+  try {
+    return url.startsWith("http")
+      ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(new URL(url).hostname)}&sz=32`
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function flattenBookmarks(nodes: chrome.bookmarks.BookmarkTreeNode[], folderPath: string[] = []): BookmarkItem[] {
+  return nodes.flatMap((node) => {
+    const nextPath = node.title ? [...folderPath, node.title] : folderPath;
+    if (node.url) {
+      return [{
+        id: node.id,
+        title: node.title.trim() || node.url,
+        url: node.url,
+        folderPath,
+        dateAdded: node.dateAdded,
+        ...(bookmarkFaviconUrl(node.url) ? { faviconUrl: bookmarkFaviconUrl(node.url) } : {}),
+      }];
+    }
+    return node.children ? flattenBookmarks(node.children, nextPath) : [];
+  });
+}
+
+async function getBookmarks(): Promise<BookmarkItem[]> {
+  const tree = await chrome.bookmarks.getTree();
+  return flattenBookmarks(tree).sort((a, b) => (b.dateAdded ?? 0) - (a.dateAdded ?? 0));
+}
+
 async function openSearchPalette() {
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab) return;
@@ -344,6 +376,7 @@ chrome.commands.onCommand.addListener((command) => {
   if (command === "open-tab-switcher") void openTabSwitcher();
   if (command === "pin-tab") void sendToActiveTab({ type: "request-pin-selected-tab" });
   if (command === "mute-tab") void sendToActiveTab({ type: "request-mute-selected-tab" });
+  if (command === "open-bookmarks") void sendToActiveTab({ type: "open-palette", mode: "bookmarks" });
 });
 
 chrome.action.onClicked.addListener(() => void openSearchPalette());
@@ -361,6 +394,11 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, sender, sendRespo
 
   if (message.type === "get-tabs") {
     void getTabs().then(sendResponse);
+    return true;
+  }
+
+  if (message.type === "get-bookmarks") {
+    void getBookmarks().then(sendResponse);
     return true;
   }
 
@@ -403,6 +441,11 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, sender, sendRespo
       await saveStoredSettings({ pinnedTabs });
     });
     void operation.then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
+    return true;
+  }
+
+  if (message.type === "open-bookmark") {
+    void chrome.tabs.create({ url: message.url }).then(() => sendResponse({ ok: true }));
     return true;
   }
 

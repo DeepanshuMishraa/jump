@@ -41,6 +41,15 @@ export type UserSettings = {
   palettePosition: PalettePosition;
 };
 
+export type BookmarkItem = {
+  id: string;
+  title: string;
+  url: string;
+  folderPath: string[];
+  dateAdded?: number;
+  faviconUrl?: string;
+};
+
 export type PaletteTab = {
   id: number;
   windowId: number;
@@ -68,10 +77,12 @@ export type BrowserMessage =
   | { type: "open-url"; url: string; openerTabId?: number }
   | { type: "search-web"; query: string }
   | { type: "open-shortcut-settings" }
-  | { type: "open-palette"; mode?: "search" | "switcher"; activeTabId?: number }
+  | { type: "open-palette"; mode?: "search" | "switcher" | "bookmarks"; activeTabId?: number }
   | { type: "cycle-tab-switcher"; direction?: "next" | "prev" }
   | { type: "request-pin-selected-tab" }
   | { type: "request-mute-selected-tab" }
+  | { type: "get-bookmarks" }
+  | { type: "open-bookmark"; url: string }
   | { type: "set-tab-pinned"; tab: PinnedTab; pinned: boolean }
   | { type: "get-settings" }
   | { type: "save-settings"; settings: Partial<UserSettings> };
