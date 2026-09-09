@@ -13,6 +13,25 @@ export async function getTabs(): Promise<PaletteTab[]> {
   return chrome.runtime.sendMessage({ type: "get-tabs" } satisfies BrowserMessage);
 }
 
+export function notifyPaletteOpened() {
+  return chrome.runtime.sendMessage({ type: "palette-opened" } satisfies BrowserMessage);
+}
+
+export function notifyPaletteClosed() {
+  return chrome.runtime.sendMessage({ type: "palette-closed" } satisfies BrowserMessage);
+}
+
+export async function getTabPreviews(tabIds: number[]) {
+  const response: unknown = await chrome.runtime.sendMessage({
+    type: "get-tab-previews",
+    tabIds,
+  } satisfies BrowserMessage);
+  if (typeof response !== "object" || response === null) return {};
+  return Object.fromEntries(Object.entries(response).filter(
+    (entry): entry is [string, string] => typeof entry[1] === "string",
+  ));
+}
+
 export async function getBrowserHistory(query: string, maxResults = 8): Promise<BrowserHistoryItem[]> {
   return chrome.runtime.sendMessage({ type: "search-history", query, maxResults } satisfies BrowserMessage);
 }

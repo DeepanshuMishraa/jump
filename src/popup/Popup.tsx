@@ -138,6 +138,21 @@ export function Popup() {
         </label>
       </section>
 
+      <section className="popup-section" aria-labelledby="appearance-label">
+        <div className="popup-section-heading">
+          <span id="appearance-label">Appearance</span>
+          <span className="popup-section-context">Overlays</span>
+        </div>
+        <label className="popup-toggle-row">
+          <span>Background vibrancy</span>
+          <input
+            type="checkbox"
+            checked={settings.useVibrancy}
+            onChange={(event) => void updateSetting("useVibrancy", event.target.checked)}
+          />
+        </label>
+      </section>
+
       <section className="popup-section" aria-labelledby="tab-switching-label">
         <div className="popup-section-heading">
           <span id="tab-switching-label">Tab switching</span>

@@ -3,6 +3,7 @@ import type { ColorTheme, PalettePosition, PinnedTab, TabSwitchMode, UserSetting
 export const DEFAULT_SETTINGS: UserSettings = {
   viewMode: "list",
   theme: "default",
+  useVibrancy: true,
   disableMouseTabSwitcher: false,
   disableMouseCommandPalette: false,
   tabSwitchMode: "recent",
@@ -221,6 +222,9 @@ export function parseStoredSettings(value: unknown): UserSettings {
   if (typeof value !== "object" || value === null) return DEFAULT_SETTINGS;
   const viewMode = "viewMode" in value && isViewMode(value.viewMode) ? value.viewMode : DEFAULT_SETTINGS.viewMode;
   const theme = "theme" in value ? parseColorTheme(value.theme) : DEFAULT_SETTINGS.theme;
+  const useVibrancy = "useVibrancy" in value && isBoolean(value.useVibrancy)
+    ? value.useVibrancy
+    : DEFAULT_SETTINGS.useVibrancy;
   const disableMouseTabSwitcher = "disableMouseTabSwitcher" in value && isBoolean(value.disableMouseTabSwitcher)
     ? value.disableMouseTabSwitcher
     : DEFAULT_SETTINGS.disableMouseTabSwitcher;
@@ -236,7 +240,7 @@ export function parseStoredSettings(value: unknown): UserSettings {
       ? parseLegacyPinnedTabs(value.pinnedTabIds)
       : DEFAULT_SETTINGS.pinnedTabs;
   const palettePosition = "palettePosition" in value ? parsePalettePosition(value.palettePosition) : DEFAULT_SETTINGS.palettePosition;
-  return { viewMode, theme, disableMouseTabSwitcher, disableMouseCommandPalette, tabSwitchMode, pinnedTabs, palettePosition };
+  return { viewMode, theme, useVibrancy, disableMouseTabSwitcher, disableMouseCommandPalette, tabSwitchMode, pinnedTabs, palettePosition };
 }
 
 function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
@@ -244,6 +248,7 @@ function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
   return {
     ...( "viewMode" in value && isViewMode(value.viewMode) ? { viewMode: value.viewMode } : {}),
     ...( "theme" in value && isColorTheme(value.theme) ? { theme: value.theme } : {}),
+    ...( "useVibrancy" in value && isBoolean(value.useVibrancy) ? { useVibrancy: value.useVibrancy } : {}),
     ...( "disableMouseTabSwitcher" in value && isBoolean(value.disableMouseTabSwitcher)
       ? { disableMouseTabSwitcher: value.disableMouseTabSwitcher }
       : {}),
@@ -291,6 +296,7 @@ async function readChromeLocalSettings() {
   const stored: unknown = await chrome.storage.local.get([
     "viewMode",
     "theme",
+    "useVibrancy",
     "disableMouseTabSwitcher",
     "disableMouseCommandPalette",
     "tabSwitchMode",
@@ -319,6 +325,7 @@ export async function getStoredSettings(): Promise<UserSettings> {
       const settings = parseStoredSettings(await chrome.storage.sync.get([
         "viewMode",
         "theme",
+        "useVibrancy",
         "disableMouseTabSwitcher",
         "disableMouseCommandPalette",
         "tabSwitchMode",

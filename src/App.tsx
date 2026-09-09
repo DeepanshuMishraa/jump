@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { activateTab, getBrowserHistory, getTabs, openUrl, searchWeb, setTabMuted, setTabPinned, type BrowserHistoryItem } from "./browser";
+import { activateTab, getBrowserHistory, getTabPreviews, getTabs, notifyPaletteClosed, notifyPaletteOpened, openUrl, searchWeb, setTabMuted, setTabPinned, type BrowserHistoryItem } from "./browser";
 import { ArrowRightIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
@@ -13,12 +13,10 @@ import type { BrowserMessage, PalettePosition, PaletteTab, UserSettings } from "
 export function App({
   onClose,
   initialMode = "search",
-  previewUrl,
   initialActiveTabId,
 }: {
   onClose: () => void;
   initialMode?: "search" | "switcher";
-  previewUrl?: string;
   initialActiveTabId?: number;
 }) {
   const [tabs, setTabs] = useState<PaletteTab[]>([]);
@@ -28,7 +26,8 @@ export function App({
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"search" | "switcher">(initialMode);
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
-  const [currentPreviewUrl, setCurrentPreviewUrl] = useState(previewUrl);
+  const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
+  const requestedPreviewIds = useRef(new Set<number>());
   const [isDraggingPalette, setIsDraggingPalette] = useState(false);
   const [dragPosition, setDragPosition] = useState<PalettePosition | undefined>();
   const [dragPreviewCell, setDragPreviewCell] = useState<{ column: number; row: number }>();
@@ -47,6 +46,7 @@ export function App({
   const [selectedIndex, setSelectedIndex] = useState(isSwitcher ? 1 : 0);
   const initialSwitcherSelectionPending = useRef(isSwitcher && initialActiveTabId !== undefined);
   const [isClosing, setIsClosing] = useState(false);
+  const isClosingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -62,6 +62,13 @@ export function App({
   modeRef.current = mode;
   const tabsRequestIdRef = useRef(0);
 
+  useMountEffect(() => {
+    void notifyPaletteOpened().catch(() => undefined);
+    return () => {
+      void notifyPaletteClosed().catch(() => undefined);
+    };
+  });
+
   // Load and subscribe to persistent settings
   useMountEffect(() => {
     void getStoredSettings().then(setSettings);
@@ -72,6 +79,19 @@ export function App({
 
   const historySearchTimerRef = useRef<number | undefined>(undefined);
   const historyRequestIdRef = useRef(0);
+  const requestTabPreviews = useCallback((tabIds: number[]) => {
+    const missingTabIds = tabIds.filter((tabId) => !requestedPreviewIds.current.has(tabId));
+    if (missingTabIds.length === 0) return;
+    missingTabIds.forEach((tabId) => requestedPreviewIds.current.add(tabId));
+    void getTabPreviews(missingTabIds).then((previews) => {
+      if (Object.keys(previews).length > 0) {
+        setPreviewUrls((current) => ({ ...current, ...previews }));
+      }
+    }).catch(() => {
+      missingTabIds.forEach((tabId) => requestedPreviewIds.current.delete(tabId));
+    });
+  }, []);
+
   const handleQueryChange = useCallback((value: string) => {
     const requestId = historyRequestIdRef.current + 1;
     historyRequestIdRef.current = requestId;
@@ -102,6 +122,9 @@ export function App({
   });
 
   const handleClose = useCallback(() => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
+    void notifyPaletteClosed().catch(() => undefined);
     setIsClosing(true);
     setTimeout(() => {
       onClose();
@@ -160,14 +183,10 @@ export function App({
   // Unified message listener for both in-page overlay and new tab page
   useMountEffect(() => {
     const handleMessage = (message: BrowserMessage) => {
-      if (message.type === "update-switcher-preview") {
-        setCurrentPreviewUrl(message.previewUrl);
-      } else if (message.type === "open-palette") {
+      if (isClosingRef.current) return;
+      if (message.type === "open-palette") {
         if (message.mode === "switcher") {
           setMode("switcher");
-          if (message.previewUrl !== undefined) {
-            setCurrentPreviewUrl(message.previewUrl);
-          }
           setIsExpanded(true);
           setSelectedIndex((currentIndex) => {
             const currentTabs = tabsRef.current;
@@ -180,7 +199,6 @@ export function App({
           });
         } else {
           setMode("search");
-          if (message.previewUrl !== undefined) setCurrentPreviewUrl(message.previewUrl);
           setIsExpanded(false);
           handleQueryChange("");
           setTimeout(() => inputRef.current?.focus(), 50);
@@ -350,12 +368,23 @@ export function App({
   selectedIndexRef.current = activeIndex;
 
   useLayoutEffect(() => {
-    if (!isSwitcher || tabs.length === 0) return;
-    const selectedCard = trackRef.current?.querySelector<HTMLElement>(
-      `[data-switcher-index="${activeIndex}"]`,
-    );
-    selectedCard?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
-  }, [activeIndex, isSwitcher, tabs.length]);
+    if (isSwitcher && tabs.length > 0) {
+      const selectedCard = trackRef.current?.querySelector<HTMLElement>(
+        `[data-switcher-index="${activeIndex}"]`,
+      );
+      selectedCard?.scrollIntoView({ behavior: "auto", block: "nearest", inline: "center" });
+      const start = Math.max(0, activeIndex - 3);
+      requestTabPreviews(tabs.slice(start, activeIndex + 5).map((tab) => tab.id));
+      return;
+    }
+
+    if (isGallery) {
+      const start = Math.max(0, activeIndex - 4);
+      requestTabPreviews(results.slice(start, activeIndex + 8).flatMap((result) =>
+        result.kind === "tab" ? [result.tab.id] : []
+      ));
+    }
+  }, [activeIndex, isGallery, isSwitcher, requestTabPreviews, results, tabs]);
 
   const autocompleteFocusedSuggestion = useCallback(() => {
     const result = results[activeIndex];
@@ -427,6 +456,7 @@ export function App({
       <div
         className={`palette-backdrop switcher-backdrop ${isClosing ? "is-closing" : ""}`}
         data-theme={settings.theme}
+        data-vibrancy={settings.useVibrancy ? "on" : "off"}
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) handleClose();
         }}
@@ -448,7 +478,7 @@ export function App({
                   tab={tab}
                   index={index}
                   isSelected={index === activeIndex}
-                  previewUrl={currentPreviewUrl}
+                  previewUrl={previewUrls[String(tab.id)]}
                   onClick={settings.disableMouseTabSwitcher ? undefined : () => void switchTab(tab)}
                   onMouseEnter={settings.disableMouseTabSwitcher ? undefined : () => setSelectedIndex(index)}
                   onToggleMute={settings.disableMouseTabSwitcher ? undefined : () => void muteTab(tab)}
@@ -545,6 +575,7 @@ export function App({
     <div
       className={`palette-backdrop ${isClosing ? "is-closing" : ""}`}
       data-theme={settings.theme}
+      data-vibrancy={settings.useVibrancy ? "on" : "off"}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) handleClose();
       }}
@@ -638,7 +669,7 @@ export function App({
                     tab={result.tab}
                     index={index}
                     isSelected={index === activeIndex}
-                    previewUrl={currentPreviewUrl}
+                    previewUrl={previewUrls[String(result.tab.id)]}
                     onClick={settings.disableMouseCommandPalette ? undefined : () => executeResult(result)}
                     onMouseEnter={settings.disableMouseCommandPalette ? undefined : () => setSelectedIndex(index)}
                     onToggleMute={settings.disableMouseCommandPalette ? undefined : () => void muteTab(result.tab)}

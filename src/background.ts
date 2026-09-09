@@ -3,11 +3,12 @@ import { getStoredSettings, pinnedTabIdentity, saveStoredSettings } from "./sett
 import type { BrowserMessage, PaletteTab } from "./types";
 
 const LEGACY_PREVIEW_CACHE_KEY = "recent-tab-previews";
-const PREVIEW_CACHE_PREFIX = "tab-preview:";
-const PREVIEW_CAPTURE_DELAY_MS = 600;
+const LEGACY_PREVIEW_CACHE_PREFIX = "tab-preview:";
+const PREVIEW_CACHE_PREFIX = "tab-preview-v2:";
+const PREVIEW_CAPTURE_DELAY_MS = 250;
 const PREVIEW_CAPTURE_INTERVAL_MS = 550;
-const PREVIEW_MAX_WIDTH = 480;
-const PREVIEW_MAX_HEIGHT = 300;
+const PREVIEW_MAX_WIDTH = 640;
+const PREVIEW_MAX_HEIGHT = 400;
 const HISTORY_CACHE_LIMIT = 100;
 
 type HistoryResult = {
@@ -32,6 +33,7 @@ function enqueuePinUpdate(update: () => Promise<void>) {
 }
 
 const previewCache = new Map<number, PreviewEntry>();
+const overlayTabIds = new Set<number>();
 const previewCaptureTimers = new Map<number, { tabId: number; timer: ReturnType<typeof setTimeout> }>();
 let previewCaptureQueue = Promise.resolve();
 let lastPreviewCaptureStartedAt = 0;
@@ -72,8 +74,8 @@ async function compactPreview(dataUrl: string) {
     }
     context.drawImage(source, 0, 0, width, height);
     source.close();
-    const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.55 });
-    return `data:image/jpeg;base64,${bytesToBase64(new Uint8Array(await blob.arrayBuffer()))}`;
+    const blob = await canvas.convertToBlob({ type: "image/webp", quality: 0.82 });
+    return `data:image/webp;base64,${bytesToBase64(new Uint8Array(await blob.arrayBuffer()))}`;
   } catch {
     return dataUrl;
   }
@@ -90,21 +92,18 @@ async function persistPreview(entry: PreviewEntry) {
 const previewCacheReady = chrome.storage.session
   .get(null)
   .then(async (stored) => {
-    const legacyEntries = parsePreviewEntries(stored[LEGACY_PREVIEW_CACHE_KEY]);
     const keyedEntries = Object.entries(stored).flatMap(([key, value]) =>
       key.startsWith(PREVIEW_CACHE_PREFIX) ? parsePreviewEntries([value]) : []
     );
-    [...legacyEntries, ...keyedEntries].forEach((entry) => previewCache.set(entry.tabId, entry));
+    keyedEntries.forEach((entry) => previewCache.set(entry.tabId, entry));
 
-    const keyedTabIds = new Set(keyedEntries.map((entry) => entry.tabId));
-    const entriesToMigrate = legacyEntries.filter((entry) => !keyedTabIds.has(entry.tabId));
-    if (legacyEntries.length > 0) {
-      if (entriesToMigrate.length > 0) {
-        await chrome.storage.session.set(Object.fromEntries(
-          entriesToMigrate.map((entry) => [previewStorageKey(entry.tabId), entry]),
-        ));
-      }
-      await chrome.storage.session.remove(LEGACY_PREVIEW_CACHE_KEY);
+    // Version 1 previews may contain the palette itself and used a much lower
+    // quality encode. Drop them instead of carrying bad images forward.
+    const obsoletePreviewKeys = Object.keys(stored).filter((key) =>
+      key === LEGACY_PREVIEW_CACHE_KEY || key.startsWith(LEGACY_PREVIEW_CACHE_PREFIX)
+    );
+    if (obsoletePreviewKeys.length > 0) {
+      await chrome.storage.session.remove(obsoletePreviewKeys);
     }
   })
   .catch(() => {});
@@ -120,23 +119,30 @@ async function capturePreview(tabId: number, windowId: number) {
 
   try {
     const tab = await chrome.tabs.get(tabId);
-    if (!tab.active || tab.discarded || !tab.url) return;
+    if (overlayTabIds.has(tabId) || !tab.active || tab.discarded || !tab.url) return;
 
-    const capturedDataUrl = await chrome.tabs.captureVisibleTab(windowId, {
-      format: "jpeg",
-      quality: 45,
-    });
+    const capturedDataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
     const currentTab = await chrome.tabs.get(tabId);
-    if (!capturedDataUrl || currentTab.url !== tab.url || !currentTab.active) return;
+    if (overlayTabIds.has(tabId) || !capturedDataUrl || currentTab.url !== tab.url || !currentTab.active) return;
 
+    const capturedAt = Date.now();
     const entry = {
       tabId,
       url: tab.url,
-      dataUrl: await compactPreview(capturedDataUrl),
-      capturedAt: Date.now(),
+      dataUrl: capturedDataUrl,
+      capturedAt,
     };
     previewCache.set(tabId, entry);
-    await persistPreview(entry);
+
+    // Make the raw preview available immediately. Compression and storage are
+    // background work so they cannot delay the switcher or its repeat rate.
+    void compactPreview(capturedDataUrl).then(async (dataUrl) => {
+      const currentEntry = previewCache.get(tabId);
+      if (currentEntry?.capturedAt !== capturedAt || currentEntry.url !== tab.url) return;
+      const compactedEntry = { ...entry, dataUrl };
+      previewCache.set(tabId, compactedEntry);
+      await persistPreview(compactedEntry);
+    }).catch(() => undefined);
   } catch {
     // Restricted browser pages and closed tabs cannot be captured.
   }
@@ -172,12 +178,14 @@ async function scheduleActiveTabCaptures() {
 }
 
 async function sendToTab(tab: chrome.tabs.Tab, message: BrowserMessage) {
-  if (tab.id === undefined) return;
+  if (tab.id === undefined) return false;
   try {
     await chrome.tabs.sendMessage(tab.id, message);
+    return true;
   } catch {
     // Content scripts run declaratively on regular web pages. Browser-owned
     // pages and tabs opened before an extension reload cannot host the palette.
+    return false;
   }
 }
 
@@ -270,7 +278,6 @@ async function getTabs(): Promise<PaletteTab[]> {
 
   return browserTabs
     .map((tab) => {
-      const preview = previewCache.get(tab.id);
       return {
         id: tab.id,
         windowId: tab.windowId,
@@ -279,7 +286,6 @@ async function getTabs(): Promise<PaletteTab[]> {
         hostname: hostnameFor(tab.url),
         index: tab.index,
         faviconUrl: tab.favIconUrl,
-        previewUrl: preview && preview.url === tab.url ? preview.dataUrl : undefined,
         active: Boolean(tab.active),
         windowFocused: focusedWindows.has(tab.windowId),
         pinned: pinnedTabs.some((pinnedTab) => {
@@ -312,6 +318,7 @@ chrome.tabs.onActivated.addListener(({ tabId, windowId }) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId, { windowId }) => {
+  overlayTabIds.delete(tabId);
   const pendingCapture = previewCaptureTimers.get(windowId);
   if (pendingCapture?.tabId === tabId) {
     clearTimeout(pendingCapture.timer);
@@ -321,7 +328,10 @@ chrome.tabs.onRemoved.addListener((tabId, { windowId }) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.url !== undefined) void removeCachedPreview(tabId);
+  if (changeInfo.url !== undefined) {
+    overlayTabIds.delete(tabId);
+    void removeCachedPreview(tabId);
+  }
   if (tab.active && (changeInfo.status === "complete" || changeInfo.url !== undefined)) {
     schedulePreviewCapture(tabId, tab.windowId);
   }
@@ -340,36 +350,43 @@ async function openSearchPalette() {
 
   // Search mode does not need a fresh screenshot. Open it immediately and let
   // the switcher own screenshot capture, so the command never feels delayed.
-  await sendToTab(tab, { type: "open-palette", mode: "search" });
+  if (tab.id !== undefined) overlayTabIds.add(tab.id);
+  const opened = await sendToTab(tab, { type: "open-palette", mode: "search" });
+  if (!opened && tab.id !== undefined) overlayTabIds.delete(tab.id);
 }
 
+let switcherOpenInFlight = false;
+
 async function openTabSwitcher() {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  if (!tab) return;
+  if (switcherOpenInFlight) return;
+  switcherOpenInFlight = true;
 
-  // Active tabs are captured as they settle. Only block the first switcher open
-  // when no preview exists; cached opens remain instantaneous and never capture
-  // the switcher UI itself.
-  if (tab.id !== undefined && !previewCache.has(tab.id)) {
-    const pendingCapture = previewCaptureTimers.get(tab.windowId);
-    if (pendingCapture !== undefined) clearTimeout(pendingCapture.timer);
-    previewCaptureTimers.delete(tab.windowId);
-    await enqueuePreviewCapture(tab.id, tab.windowId);
-  }
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (!tab) return;
 
-  const [currentTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  const preview = tab.id !== undefined ? previewCache.get(tab.id) : undefined;
-  const previewUrl = currentTab?.id === tab.id && currentTab.url === preview?.url
-    ? preview?.dataUrl
-    : undefined;
+    // Capture only when the active tab has no valid cached preview. The raw
+    // frame is available before compression, and overlapping shortcut events
+    // are dropped instead of queued for delivery after Alt is released.
+    await previewCacheReady;
+    const cachedPreview = tab.id !== undefined ? previewCache.get(tab.id) : undefined;
+    const canCaptureNow = Date.now() - lastPreviewCaptureStartedAt >= PREVIEW_CAPTURE_INTERVAL_MS;
+    if (tab.id !== undefined && cachedPreview?.url !== tab.url && canCaptureNow) {
+      lastPreviewCaptureStartedAt = Date.now();
+      await capturePreview(tab.id, tab.windowId);
+    }
 
-  if (currentTab) {
-    await sendToTab(currentTab, {
+    // getTabs supplies every cached preview in one response after mount. Keep
+    // this command message small instead of sending the active image twice.
+    if (tab.id !== undefined) overlayTabIds.add(tab.id);
+    const opened = await sendToTab(tab, {
       type: "open-palette",
       mode: "switcher",
-      previewUrl,
-      activeTabId: currentTab.id,
+      activeTabId: tab.id,
     });
+    if (!opened && tab.id !== undefined) overlayTabIds.delete(tab.id);
+  } finally {
+    switcherOpenInFlight = false;
   }
 }
 
@@ -382,9 +399,32 @@ chrome.commands.onCommand.addListener((command) => {
 
 chrome.action.onClicked.addListener(() => void openSearchPalette());
 
-chrome.runtime.onMessage.addListener((message: BrowserMessage, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: BrowserMessage, sender, sendResponse) => {
+  if (message.type === "palette-opened") {
+    if (sender.tab?.id !== undefined) overlayTabIds.add(sender.tab.id);
+    return false;
+  }
+
+  if (message.type === "palette-closed") {
+    if (sender.tab?.id !== undefined) overlayTabIds.delete(sender.tab.id);
+    return false;
+  }
+
   if (message.type === "get-tabs") {
     void getTabs().then(sendResponse);
+    return true;
+  }
+
+  if (message.type === "get-tab-previews") {
+    const tabIds = message.tabIds
+      .filter((tabId) => Number.isInteger(tabId) && tabId > 0)
+      .slice(0, 12);
+    void previewCacheReady.then(() => {
+      sendResponse(Object.fromEntries(tabIds.flatMap((tabId) => {
+        const preview = previewCache.get(tabId);
+        return preview ? [[String(tabId), preview.dataUrl]] : [];
+      })));
+    });
     return true;
   }
 

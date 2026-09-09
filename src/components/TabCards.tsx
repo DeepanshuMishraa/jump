@@ -13,11 +13,11 @@ type CardProps = {
 };
 
 export function SwitcherCard({ tab, isSelected, previewUrl, index, onClick, onMouseEnter, onToggleMute }: CardProps) {
-  const effectivePreview = tab.previewUrl || (tab.active && tab.windowFocused ? previewUrl : undefined);
+  const effectivePreview = previewUrl;
   return (
     <div data-switcher-index={index} className={`switcher-card ${isSelected ? "is-selected" : ""}`} onClick={onClick} onMouseEnter={onMouseEnter} role="option" aria-selected={isSelected}>
       <div className="switcher-thumbnail">
-        {effectivePreview ? <img src={effectivePreview} alt="" className="switcher-thumbnail-image" loading="eager" /> : (
+        {effectivePreview ? <img src={effectivePreview} alt="" className="switcher-thumbnail-image" loading="eager" decoding="async" /> : (
           <div className="switcher-placeholder">
             <div className="switcher-placeholder-icon"><TabFavicon tab={tab} size={32} /></div>
             <span className="switcher-placeholder-domain">{tab.hostname || "Web Page"}</span>
@@ -36,11 +36,11 @@ export function SwitcherCard({ tab, isSelected, previewUrl, index, onClick, onMo
 }
 
 export function GalleryCard({ tab, index, isSelected, previewUrl, onClick, onMouseEnter, onToggleMute }: CardProps) {
-  const effectivePreview = tab.previewUrl || (tab.active && tab.windowFocused ? previewUrl : undefined);
+  const effectivePreview = previewUrl;
   return (
     <div data-index={index} className={`gallery-card ${isSelected ? "selected" : ""}`} onClick={onClick} onMouseEnter={onMouseEnter} role="option" aria-selected={isSelected}>
       <div className="gallery-thumbnail">
-        {effectivePreview ? <img src={effectivePreview} alt="" className="gallery-thumbnail-image" loading="eager" /> : (
+        {effectivePreview ? <img src={effectivePreview} alt="" className="gallery-thumbnail-image" loading="eager" decoding="async" /> : (
           <div className="gallery-placeholder">
             <TabFavicon tab={tab} size={28} />
             <span className="gallery-placeholder-domain">{tab.hostname || "Web Page"}</span>
