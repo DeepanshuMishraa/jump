@@ -520,12 +520,34 @@ button {
 .palette-card.is-drag-ready,
 .palette-card.is-drag-ready * {
   cursor: grab !important;
+  user-select: none;
+}
+
+/* While Alt is held the whole card is a drag surface: interactive children
+   (input, buttons, rows) stop receiving pointer events so Alt+drag can only
+   move the palette, never focus, select, or activate anything. */
+.palette-card.is-drag-ready input,
+.palette-card.is-drag-ready button,
+.palette-card.is-drag-ready select,
+.palette-card.is-drag-ready textarea,
+.palette-card.is-drag-ready a,
+.palette-card.is-drag-ready [role="button"],
+.palette-card.is-drag-ready [role="option"],
+.palette-card.is-dragging input,
+.palette-card.is-dragging button,
+.palette-card.is-dragging select,
+.palette-card.is-dragging textarea,
+.palette-card.is-dragging a,
+.palette-card.is-dragging [role="button"],
+.palette-card.is-dragging [role="option"] {
+  pointer-events: none;
 }
 
 .palette-card.is-dragging,
 .palette-card.is-dragging * {
   cursor: grabbing !important;
   user-select: none;
+  touch-action: none;
 }
 
 .palette-placement-grid {
@@ -609,9 +631,12 @@ button {
 
 /* Items List (List View) */
 .item-list {
-  max-height: 380px;
+  max-height: min(380px, calc(100vh - 110px));
+  min-height: 0;
   overflow-y: auto;
-  padding: 6px 8px 8px;
+  overscroll-behavior: contain;
+  scroll-padding-block: 8px 24px;
+  padding: 6px 8px 24px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -794,8 +819,8 @@ button {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-  padding: 16px 14px 20px;
-  max-height: 480px;
+  padding: 16px 14px 24px;
+  max-height: min(480px, calc(100vh - 110px));
 }
 
 .gallery-card {

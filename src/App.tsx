@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardE
 import { activateTab, getBrowserHistory, getTabPreviews, getTabs, notifyPaletteClosed, notifyPaletteOpened, openUrl, searchWeb, setTabMuted, setTabPinned, type BrowserHistoryItem } from "./browser";
 import { ArrowRightIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
-import { canStartPaletteDrag } from "./paletteDrag";
+import { canStartPaletteDrag, dragPreviewCellForPoint, isAltModifierActive, nextFreeDragPosition, snapPalettePosition } from "./paletteDrag";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { stalePreviewTabIds } from "./previewCache";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
@@ -46,6 +46,14 @@ export function App({
     startPosition: PalettePosition;
     moved: boolean;
   } | undefined>(undefined);
+  const pointerDownAnchorRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    button: number;
+  } | undefined>(undefined);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   const isSwitcher = mode === "switcher";
   const isGallery = settings.viewMode === "gallery";
@@ -352,7 +360,7 @@ export function App({
   // Global keyup/keydown handler for releasing Alt key and cycling in switcher mode
   useMountEffect(() => {
     const handleWindowKeyUp = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Alt") {
+      if (event.key === "Alt" || !isAltModifierActive(event)) {
         paletteDragModifierRef.current = false;
         setIsPaletteDragReady(false);
       }
@@ -369,9 +377,9 @@ export function App({
     };
 
     const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Alt") {
+      if (isAltModifierActive(event)) {
         paletteDragModifierRef.current = true;
-        setIsPaletteDragReady(true);
+        setIsPaletteDragReady(!settingsRef.current.disableMouseCommandPalette);
       }
       if (event.altKey && (event.key.toLowerCase() === "m" || event.code === "KeyM")) {
         event.preventDefault();
@@ -448,6 +456,18 @@ export function App({
       const start = Math.max(0, activeIndex - 3);
       requestTabPreviews(tabs.slice(start, activeIndex + 5).map((tab) => tab.id));
       return;
+    }
+
+    const selectedItem = listRef.current?.querySelector<HTMLElement>(`[data-index="${activeIndex}"]`);
+    const list = listRef.current;
+    if (selectedItem && list) {
+      const listRect = list.getBoundingClientRect();
+      const itemRect = selectedItem.getBoundingClientRect();
+      if (itemRect.top < listRect.top) {
+        list.scrollTop -= listRect.top - itemRect.top;
+      } else if (itemRect.bottom > listRect.bottom) {
+        list.scrollTop += itemRect.bottom - listRect.bottom;
+      }
     }
 
     if (isGallery) {
@@ -569,73 +589,76 @@ export function App({
   const showDropdown = isExpanded || Boolean(query.trim());
   const visiblePalettePosition = dragPosition ?? settings.palettePosition;
 
-  const handlePalettePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    const target = event.target instanceof Element
-      ? event.target.closest("input, button, select, textarea, a, [role=button], [role=option]")
-      : null;
-    if (target !== null || !canStartPaletteDrag({
-      altKey: event.altKey || paletteDragModifierRef.current,
-      button: event.button,
-      mouseDisabled: settings.disableMouseCommandPalette,
-    })) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const position = settings.palettePosition;
+  const startPaletteDrag = useCallback((clientX: number, clientY: number, pointerId: number, moved = false) => {
+    const position = settingsRef.current.palettePosition;
     paletteDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
+      pointerId,
+      startX: clientX,
+      startY: clientY,
       startPosition: position,
-      moved: false,
+      moved,
     };
     setDragPosition(position);
-    setDragPreviewCell({
-      column: Math.min(2, Math.max(0, Math.floor((event.clientX / window.innerWidth) * 3))),
-      row: Math.min(2, Math.max(0, Math.floor((event.clientY / window.innerHeight) * 3))),
-    });
-    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragPreviewCell(dragPreviewCellForPoint({
+      clientX,
+      clientY,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }));
     setIsDraggingPalette(true);
-  };
+  }, []);
 
-  const handlePalettePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+  const updatePaletteDrag = useCallback((clientX: number, clientY: number, pointerId: number) => {
     const drag = paletteDragRef.current;
-    if (!drag) {
-      if (paletteDragModifierRef.current !== event.altKey) {
-        paletteDragModifierRef.current = event.altKey;
-        setIsPaletteDragReady(event.altKey);
-      }
-      return;
+    if (!drag || drag.pointerId !== pointerId) return;
+    if (Math.abs(clientX - drag.startX) > 3 || Math.abs(clientY - drag.startY) > 3) drag.moved = true;
+    setDragPosition(nextFreeDragPosition({
+      startX: drag.startX,
+      startY: drag.startY,
+      startPosition: drag.startPosition,
+      clientX,
+      clientY,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }));
+    setDragPreviewCell(dragPreviewCellForPoint({
+      clientX,
+      clientY,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }));
+  }, []);
+
+  const releasePalettePointerCapture = useCallback((pointerId: number) => {
+    try {
+      const card = paletteCardRef.current;
+      if (card?.hasPointerCapture?.(pointerId)) card.releasePointerCapture(pointerId);
+    } catch {
+      // Releasing capture is best-effort; window listeners already track the drag.
     }
-    if (drag.pointerId !== event.pointerId) return;
-    const deltaX = event.clientX - drag.startX;
-    const deltaY = event.clientY - drag.startY;
-    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) drag.moved = true;
-    const nextPosition = {
-      x: Math.min(1, Math.max(0, drag.startPosition.x + deltaX / window.innerWidth)),
-      y: Math.min(1, Math.max(0, drag.startPosition.y + deltaY / window.innerHeight)),
-    };
-    setDragPosition(nextPosition);
-    setDragPreviewCell({
-      column: Math.min(2, Math.max(0, Math.floor((event.clientX / window.innerWidth) * 3))),
-      row: Math.min(2, Math.max(0, Math.floor((event.clientY / window.innerHeight) * 3))),
-    });
-  };
+  }, []);
 
-  const finishPaletteDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+  const finishPaletteDragAt = useCallback((clientX: number, clientY: number, pointerId: number) => {
     const drag = paletteDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag || drag.pointerId !== pointerId) return;
     const card = paletteCardRef.current;
-    const column = Math.min(2, Math.max(0, Math.floor((event.clientX / window.innerWidth) * 3)));
-    const row = Math.min(2, Math.max(0, Math.floor((event.clientY / window.innerHeight) * 3)));
     const width = card?.getBoundingClientRect().width ?? 640;
     const height = card?.getBoundingClientRect().height ?? 54;
-    const x = Math.min(1 - width / (window.innerWidth * 2), Math.max(width / (window.innerWidth * 2), (column + 0.5) / 3));
-    const y = Math.min(
-      1 - height / window.innerHeight,
-      Math.max(0, (row + 0.5) / 3 - height / (window.innerHeight * 2)),
-    );
-    const nextPosition = { x, y };
+    const nextPosition = snapPalettePosition({
+      ...dragPreviewCellForPoint({
+        clientX,
+        clientY,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      }),
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      cardWidth: width,
+      cardHeight: height,
+    });
     paletteDragRef.current = undefined;
+    pointerDownAnchorRef.current = undefined;
+    releasePalettePointerCapture(pointerId);
     setIsDraggingPalette(false);
     setDragPosition(undefined);
     setDragPreviewCell(undefined);
@@ -643,15 +666,108 @@ export function App({
       setSettings((current) => ({ ...current, palettePosition: nextPosition }));
       void saveStoredSettings({ palettePosition: nextPosition }).then(setSettings);
     }
-  };
+  }, [releasePalettePointerCapture]);
 
-  const cancelPaletteDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+  const cancelPaletteDragAt = useCallback((pointerId: number) => {
     const drag = paletteDragRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag || drag.pointerId !== pointerId) return;
     paletteDragRef.current = undefined;
+    pointerDownAnchorRef.current = undefined;
+    releasePalettePointerCapture(pointerId);
     setIsDraggingPalette(false);
     setDragPosition(undefined);
     setDragPreviewCell(undefined);
+  }, [releasePalettePointerCapture]);
+
+  // Track the drag at window level so moves keep arriving even when pointer
+  // capture fails or events retarget outside the card (fast drags, native
+  // input behaviors, shadow-DOM retargeting). Also starts the drag when Alt
+  // is pressed mid-press, so both press orders work.
+  useMountEffect(() => {
+    const handleWindowPointerMove = (event: globalThis.PointerEvent) => {
+      if (paletteDragRef.current) {
+        updatePaletteDrag(event.clientX, event.clientY, event.pointerId);
+        return;
+      }
+      const anchor = pointerDownAnchorRef.current;
+      if (!anchor || anchor.pointerId !== event.pointerId) return;
+      if (!(event.buttons & 1) || anchor.button !== 0) return;
+      if (!isAltModifierActive(event) || settingsRef.current.disableMouseCommandPalette) return;
+      if (Math.abs(event.clientX - anchor.startX) <= 3 && Math.abs(event.clientY - anchor.startY) <= 3) return;
+      startPaletteDrag(event.clientX, event.clientY, event.pointerId, true);
+    };
+    const clearAnchorWithoutDrag = (pointerId: number) => {
+      if (pointerDownAnchorRef.current?.pointerId === pointerId && !paletteDragRef.current) {
+        pointerDownAnchorRef.current = undefined;
+      }
+    };
+    const handleWindowPointerUp = (event: globalThis.PointerEvent) => {
+      clearAnchorWithoutDrag(event.pointerId);
+      finishPaletteDragAt(event.clientX, event.clientY, event.pointerId);
+    };
+    const handleWindowPointerCancel = (event: globalThis.PointerEvent) => {
+      clearAnchorWithoutDrag(event.pointerId);
+      cancelPaletteDragAt(event.pointerId);
+    };
+    const handleWindowBlur = () => {
+      const drag = paletteDragRef.current;
+      paletteDragModifierRef.current = false;
+      setIsPaletteDragReady(false);
+      if (drag) cancelPaletteDragAt(drag.pointerId);
+    };
+    window.addEventListener("pointermove", handleWindowPointerMove);
+    window.addEventListener("pointerup", handleWindowPointerUp);
+    window.addEventListener("pointercancel", handleWindowPointerCancel);
+    window.addEventListener("blur", handleWindowBlur);
+    return () => {
+      window.removeEventListener("pointermove", handleWindowPointerMove);
+      window.removeEventListener("pointerup", handleWindowPointerUp);
+      window.removeEventListener("pointercancel", handleWindowPointerCancel);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
+  });
+
+  const handlePalettePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button === 0) {
+      pointerDownAnchorRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        button: event.button,
+      };
+    }
+    if (!canStartPaletteDrag({
+      altKey: isAltModifierActive(event) || paletteDragModifierRef.current,
+      button: event.button,
+      mouseDisabled: settingsRef.current.disableMouseCommandPalette,
+    })) return;
+    event.preventDefault();
+    startPaletteDrag(event.clientX, event.clientY, event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is best-effort; window-level listeners keep tracking the drag.
+    }
+  };
+
+  const handlePalettePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (paletteDragRef.current) {
+      updatePaletteDrag(event.clientX, event.clientY, event.pointerId);
+      return;
+    }
+    const altActive = isAltModifierActive(event);
+    if (paletteDragModifierRef.current !== altActive) {
+      paletteDragModifierRef.current = altActive;
+      setIsPaletteDragReady(altActive && !settingsRef.current.disableMouseCommandPalette);
+    }
+  };
+
+  const finishPaletteDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    finishPaletteDragAt(event.clientX, event.clientY, event.pointerId);
+  };
+
+  const cancelPaletteDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    cancelPaletteDragAt(event.pointerId);
   };
 
   return (
@@ -660,6 +776,7 @@ export function App({
       data-theme={settings.theme}
       data-vibrancy={settings.useVibrancy ? "on" : "off"}
       onMouseDown={(event) => {
+        if (event.altKey) return;
         if (event.target === event.currentTarget) handleClose();
       }}
     >
@@ -679,13 +796,22 @@ export function App({
         style={{ left: `${visiblePalettePosition.x * 100}%`, top: `${visiblePalettePosition.y * 100}%` }}
         role="dialog"
         aria-modal="true"
-        onPointerDown={handlePalettePointerDown}
-        onPointerMove={handlePalettePointerMove}
-        onPointerUp={finishPaletteDrag}
-        onPointerCancel={cancelPaletteDrag}
+        onPointerDownCapture={handlePalettePointerDown}
+        onPointerMoveCapture={handlePalettePointerMove}
+        onPointerUpCapture={finishPaletteDrag}
+        onPointerCancelCapture={cancelPaletteDrag}
+        onClickCapture={(event) => {
+          // Alt+click is a drag gesture, never an activation: block buttons,
+          // clear/expand toggles, and rows from firing while Alt is held.
+          if (isAltModifierActive(event) || paletteDragModifierRef.current) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        }}
         onPointerEnter={(event) => {
-          paletteDragModifierRef.current = event.altKey;
-          setIsPaletteDragReady(event.altKey);
+          const altActive = isAltModifierActive(event);
+          paletteDragModifierRef.current = altActive;
+          setIsPaletteDragReady(altActive && !settingsRef.current.disableMouseCommandPalette);
         }}
         onPointerLeave={() => {
           if (paletteDragRef.current) return;
