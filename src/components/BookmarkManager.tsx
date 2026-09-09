@@ -93,11 +93,12 @@ export function BookmarkManager({
     const normalized = query.trim().toLowerCase();
     return bookmarks
       .filter((bookmark) => {
-        if (selectedFolder && !bookmark.folderPath.includes(selectedFolder)) {
+        if (selectedFolder && !bookmark.folderPath.some((folder) => folder.trim() === selectedFolder)) {
           return false;
         }
         if (!normalized) return true;
-        const matchable = `${bookmark.title} ${bookmark.url} ${bookmark.folderPath.join(" ")}`.toLowerCase();
+        const normalizedFolders = bookmark.folderPath.map((folder) => folder.trim()).join(" ");
+        const matchable = `${bookmark.title} ${bookmark.url} ${normalizedFolders}`.toLowerCase();
         return matchable.includes(normalized);
       })
       .sort((a, b) => (b.dateAdded ?? 0) - (a.dateAdded ?? 0));
@@ -281,6 +282,7 @@ export function BookmarkManager({
           cycleFolderRef.current("next");
         }
       } else if (event.key === "Enter") {
+        if (event.target instanceof HTMLButtonElement) return;
         event.preventDefault();
         const target = filteredBookmarksRef.current[selectedIndexRef.current];
         if (target) {

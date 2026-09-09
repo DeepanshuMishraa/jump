@@ -375,7 +375,6 @@ chrome.commands.onCommand.addListener((command) => {
   if (command === "open-palette") void openSearchPalette();
   if (command === "open-tab-switcher") void openTabSwitcher();
   if (command === "pin-tab") void sendToActiveTab({ type: "request-pin-selected-tab" });
-  if (command === "mute-tab") void sendToActiveTab({ type: "request-mute-selected-tab" });
   if (command === "open-bookmarks") void sendToActiveTab({ type: "open-palette", mode: "bookmarks" });
 });
 

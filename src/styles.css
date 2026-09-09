@@ -1849,6 +1849,11 @@ kbd {
 }
 
 @media (prefers-reduced-transparency: reduce) {
+  .palette-backdrop[data-vibrancy="on"] {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
   .palette-backdrop[data-vibrancy="on"] .palette-card,
   .palette-backdrop[data-vibrancy="on"] .bookmark-card {
     background: var(--bg-panel);
@@ -1879,15 +1884,21 @@ kbd {
   .switcher-card,
   .gallery-card,
   .list-row,
+  .bookmark-scope-pill,
   .popup-segmented-item,
   .popup-settings-link {
     transition: none;
+  }
+
+  .bookmark-card.is-closing {
+    animation: none;
   }
 
   .switcher-card,
   .switcher-card:hover,
   .switcher-card.is-selected,
   .switcher-card:active,
+  .bookmark-scope-pill:active,
   .gallery-card,
   .gallery-card:hover,
   .gallery-card.selected,
