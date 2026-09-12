@@ -15,6 +15,7 @@ export type ColorTheme =
 
 export type ViewMode = "list" | "gallery";
 export type TabSwitchMode = "recent" | "order";
+export type PaletteViewMode = "collapsed" | "expanded";
 
 export type PalettePosition = {
   x: number;
@@ -38,6 +39,8 @@ export type UserSettings = {
   disableMouseCommandPalette: boolean;
   disableMouseBookmarks: boolean;
   tabSwitchMode: TabSwitchMode;
+  paletteViewMode: PaletteViewMode;
+  paletteOpacity: number;
   pinnedTabs: PinnedTab[];
   palettePosition: PalettePosition;
 };

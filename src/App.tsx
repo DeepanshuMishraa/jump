@@ -88,7 +88,10 @@ export function App({
 
   // Load and subscribe to persistent settings
   useMountEffect(() => {
-    void getStoredSettings().then(setSettings);
+    void getStoredSettings().then((loaded) => {
+      setSettings(loaded);
+      if (modeRef.current === "search") setIsExpanded(loaded.paletteViewMode === "expanded");
+    });
     void getSearchHistory().then(setHistory).catch(() => setHistory([]));
     void getBrowserHistory("", 8).then(setRecentBrowserHistory).catch(() => setRecentBrowserHistory([]));
     return subscribeToSettings(setSettings);
@@ -276,8 +279,8 @@ export function App({
           });
         } else {
           setMode("search");
-          setIsExpanded(false);
           handleQueryChange("");
+          setIsExpanded(settingsRef.current.paletteViewMode === "expanded");
           setTimeout(() => inputRef.current?.focus(), 50);
         }
       } else if (message.type === "cycle-tab-switcher") {
@@ -740,6 +743,7 @@ export function App({
       <BookmarkManager
         theme={settings.theme}
         useVibrancy={settings.useVibrancy}
+        opacity={settings.paletteOpacity}
         disableMouse={settings.disableMouseBookmarks}
         position={visiblePalettePosition}
         isClosing={isClosing}
@@ -759,7 +763,7 @@ export function App({
           if (event.target === event.currentTarget) handleClose();
         }}
       >
-        <div className={`switcher-hud ${isClosing ? "is-closing" : ""}`} role="dialog" aria-label="Tab Switcher">
+        <div className={`switcher-hud ${isClosing ? "is-closing" : ""}`} role="dialog" aria-label="Tab Switcher" style={{ opacity: settings.paletteOpacity }}>
           <div
             className={`switcher-track ${tabs.length <= 3 ? "is-centered" : ""}`}
             ref={trackRef}
@@ -812,13 +816,13 @@ export function App({
       <div
         ref={paletteCardRef}
         className={`palette-card ${showDropdown ? "is-expanded" : ""} ${isGallery && showDropdown ? "is-gallery-view" : ""} ${isClosing ? "is-closing" : ""} ${isPaletteDragReady ? "is-drag-ready" : ""} ${isDraggingPalette ? "is-dragging" : ""}`}
-        style={{ left: `${visiblePalettePosition.x * 100}%`, top: `${visiblePalettePosition.y * 100}%` }}
+        style={{ left: `${visiblePalettePosition.x * 100}%`, top: `${visiblePalettePosition.y * 100}%`, opacity: settings.paletteOpacity }}
         role="dialog"
         aria-modal="true"
-        onPointerDownCapture={handlePalettePointerDown}
-        onPointerMoveCapture={handlePalettePointerMove}
-        onPointerUpCapture={finishPaletteDrag}
-        onPointerCancelCapture={cancelPaletteDrag}
+        onPointerDown={handlePalettePointerDown}
+        onPointerMove={handlePalettePointerMove}
+        onPointerUp={finishPaletteDrag}
+        onPointerCancel={cancelPaletteDrag}
         onClickCapture={(event) => {
           // Alt+click is a drag gesture, never an activation: block buttons,
           // clear/expand toggles, and rows from firing while Alt is held.

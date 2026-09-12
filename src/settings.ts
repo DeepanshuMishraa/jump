@@ -1,4 +1,4 @@
-import type { ColorTheme, PalettePosition, PinnedTab, TabSwitchMode, UserSettings, ViewMode } from "./types";
+import type { ColorTheme, PalettePosition, PaletteViewMode, PinnedTab, TabSwitchMode, UserSettings, ViewMode } from "./types";
 
 export const DEFAULT_SETTINGS: UserSettings = {
   viewMode: "list",
@@ -8,6 +8,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   disableMouseCommandPalette: false,
   disableMouseBookmarks: false,
   tabSwitchMode: "recent",
+  paletteViewMode: "collapsed",
+  paletteOpacity: 1,
   pinnedTabs: [],
   palettePosition: { x: 0.5, y: 0.28 },
 };
@@ -158,6 +160,16 @@ function isTabSwitchMode(value: unknown): value is TabSwitchMode {
   return value === "recent" || value === "order";
 }
 
+function isPaletteViewMode(value: unknown): value is PaletteViewMode {
+  return value === "collapsed" || value === "expanded";
+}
+
+function parsePaletteOpacity(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(1, Math.max(0.4, value))
+    : DEFAULT_SETTINGS.paletteOpacity;
+}
+
 function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean";
 }
@@ -238,13 +250,19 @@ export function parseStoredSettings(value: unknown): UserSettings {
   const tabSwitchMode = "tabSwitchMode" in value && isTabSwitchMode(value.tabSwitchMode)
     ? value.tabSwitchMode
     : DEFAULT_SETTINGS.tabSwitchMode;
+  const paletteViewMode = "paletteViewMode" in value && isPaletteViewMode(value.paletteViewMode)
+    ? value.paletteViewMode
+    : DEFAULT_SETTINGS.paletteViewMode;
+  const paletteOpacity = "paletteOpacity" in value
+    ? parsePaletteOpacity(value.paletteOpacity)
+    : DEFAULT_SETTINGS.paletteOpacity;
   const pinnedTabs = "pinnedTabs" in value
     ? parsePinnedTabs(value.pinnedTabs)
     : "pinnedTabIds" in value
       ? parseLegacyPinnedTabs(value.pinnedTabIds)
       : DEFAULT_SETTINGS.pinnedTabs;
   const palettePosition = "palettePosition" in value ? parsePalettePosition(value.palettePosition) : DEFAULT_SETTINGS.palettePosition;
-  return { viewMode, theme, useVibrancy, disableMouseTabSwitcher, disableMouseCommandPalette, disableMouseBookmarks, tabSwitchMode, pinnedTabs, palettePosition };
+  return { viewMode, theme, useVibrancy, disableMouseTabSwitcher, disableMouseCommandPalette, disableMouseBookmarks, tabSwitchMode, paletteViewMode, paletteOpacity, pinnedTabs, palettePosition };
 }
 
 function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
@@ -264,6 +282,12 @@ function parseSettingsUpdate(value: unknown): Partial<UserSettings> {
       : {}),
     ...( "tabSwitchMode" in value && isTabSwitchMode(value.tabSwitchMode)
       ? { tabSwitchMode: value.tabSwitchMode }
+      : {}),
+    ...( "paletteViewMode" in value && isPaletteViewMode(value.paletteViewMode)
+      ? { paletteViewMode: value.paletteViewMode }
+      : {}),
+    ...( "paletteOpacity" in value && typeof value.paletteOpacity === "number" && Number.isFinite(value.paletteOpacity)
+      ? { paletteOpacity: parsePaletteOpacity(value.paletteOpacity) }
       : {}),
     ...( "pinnedTabs" in value ? { pinnedTabs: parsePinnedTabs(value.pinnedTabs) } : {}),
     ...( "pinnedTabIds" in value && Array.isArray(value.pinnedTabIds)
@@ -308,6 +332,8 @@ async function readChromeLocalSettings() {
     "disableMouseCommandPalette",
     "disableMouseBookmarks",
     "tabSwitchMode",
+    "paletteViewMode",
+    "paletteOpacity",
     "pinnedTabs",
     "pinnedTabIds",
     "palettePosition",
@@ -338,6 +364,8 @@ export async function getStoredSettings(): Promise<UserSettings> {
         "disableMouseCommandPalette",
         "disableMouseBookmarks",
         "tabSwitchMode",
+        "paletteViewMode",
+        "paletteOpacity",
         "pinnedTabs",
         "pinnedTabIds",
         "palettePosition",

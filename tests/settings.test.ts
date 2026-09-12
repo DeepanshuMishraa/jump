@@ -65,6 +65,14 @@ test("persisted settings validate fields independently", () => {
     DEFAULT_SETTINGS,
   );
   assert.deepEqual(
+    parseStoredSettings({ paletteViewMode: "expanded", paletteOpacity: 0.65 }),
+    { ...DEFAULT_SETTINGS, paletteViewMode: "expanded", paletteOpacity: 0.65 },
+  );
+  assert.deepEqual(
+    parseStoredSettings({ paletteViewMode: "bad", paletteOpacity: 2 }),
+    { ...DEFAULT_SETTINGS, paletteOpacity: 1 },
+  );
+  assert.deepEqual(
     parseStoredSettings({ useVibrancy: false, disableMouseTabSwitcher: true, disableMouseCommandPalette: "yes", pinnedTabs: [{ tabId: 12, url: "https://example.com" }, { tabId: 0, url: "bad" }] }),
     {
       ...DEFAULT_SETTINGS,

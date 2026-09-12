@@ -40,6 +40,7 @@ function BookmarkFavicon({ bookmark }: { bookmark: BookmarkItem }) {
 export function BookmarkManager({
   theme,
   useVibrancy = true,
+  opacity = 1,
   disableMouse = false,
   position = { x: 0.5, y: 0.28 },
   isClosing = false,
@@ -47,6 +48,7 @@ export function BookmarkManager({
 }: {
   theme: ColorTheme;
   useVibrancy?: boolean;
+  opacity?: number;
   disableMouse?: boolean;
   position?: PalettePosition;
   isClosing?: boolean;
@@ -320,6 +322,7 @@ export function BookmarkManager({
         style={{
           left: `${(dragPosition ?? position).x * 100}%`,
           top: `${(dragPosition ?? position).y * 100}%`,
+          opacity,
         }}
         ref={cardRef}
         role="dialog"

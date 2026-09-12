@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { openShortcutSettings } from "../browser";
 import { CommandIcon, ArrowUpRightIcon, InfoIcon } from "../icons";
 import { DEFAULT_SETTINGS, getStoredSettings, saveStoredSettings, THEMES } from "../settings";
-import type { TabSwitchMode, UserSettings } from "../types";
+import type { PaletteViewMode, TabSwitchMode, UserSettings } from "../types";
 import { resolveSettingsRead } from "./settingsState";
 import { useMountEffect } from "../hooks/useMountEffect";
 
@@ -152,6 +152,46 @@ export function Popup() {
             onChange={(event) => void updateSetting("useVibrancy", event.target.checked)}
           />
         </label>
+      </section>
+
+      <section className="popup-section" aria-labelledby="opacity-label">
+        <div className="popup-section-heading">
+          <span id="opacity-label">Opacity</span>
+          <span className="popup-section-context">All overlays</span>
+        </div>
+        <label className="popup-range-row">
+          <span className="sr-only">Overlay opacity</span>
+          <input
+            className="popup-range"
+            type="range"
+            min="0.4"
+            max="1"
+            step="0.05"
+            value={settings.paletteOpacity}
+            onChange={(event) => void updateSetting("paletteOpacity", Number(event.target.value))}
+          />
+          <output>{Math.round(settings.paletteOpacity * 100)}%</output>
+        </label>
+      </section>
+
+      <section className="popup-section" aria-labelledby="palette-view-label">
+        <div className="popup-section-heading">
+          <span id="palette-view-label">Command palette</span>
+          <span className="popup-section-context">Default view</span>
+        </div>
+        <div className="popup-segmented" role="group" aria-label="Command palette default view">
+          {(["collapsed", "expanded"] as const satisfies readonly PaletteViewMode[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={`popup-segmented-item ${settings.paletteViewMode === mode ? "active" : ""}`}
+              aria-pressed={settings.paletteViewMode === mode}
+              onClick={() => void updateSetting("paletteViewMode", mode)}
+            >
+              <span>{mode === "collapsed" ? "Collapsed" : "Expanded"}</span>
+            </button>
+          ))}
+        </div>
       </section>
 
       <section className="popup-section" aria-labelledby="tab-switching-label">
