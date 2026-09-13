@@ -423,6 +423,11 @@ button {
   background: var(--bg-card-hover);
 }
 
+.bookmark-list[data-keyboard-nav="true"] .bookmark-row:hover:not(.selected) {
+  background: transparent;
+  border-color: transparent;
+}
+
 .bookmark-row.selected {
   background: var(--bg-selected);
   border-color: var(--border-selected);

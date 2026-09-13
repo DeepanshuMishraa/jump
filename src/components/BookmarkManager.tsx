@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getBookmarks, openBookmark } from "../browser";
 import { BookmarkIcon, FolderIcon, GlobeIcon, SearchIcon, XIcon } from "../icons";
 import { useMountEffect } from "../hooks/useMountEffect";
@@ -58,6 +58,10 @@ export function BookmarkManager({
   const [query, setQuery] = useState("");
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [isKeyboardNav, setIsKeyboardNav] = useState(false);
+  const isKeyboardNavRef = useRef(false);
+  const scrollNeededRef = useRef(false);
+  const lastMousePosRef = useRef<{ x: number; y: number }>({ x: -1, y: -1 });
   const [dragPosition, setDragPosition] = useState<PalettePosition>();
   const [dragPreviewCell, setDragPreviewCell] = useState<{ column: number; row: number }>();
   const cardRef = useRef<HTMLDivElement>(null);
@@ -116,12 +120,10 @@ export function BookmarkManager({
     [filteredBookmarks, selectedIndex, onClose],
   );
 
-  const updateSelectedIndex = useCallback((nextIndex: number) => {
-    setSelectedIndex(nextIndex);
-    const row = rowRefs.current[nextIndex];
-    if (row) {
-      row.scrollIntoView({ block: "nearest" });
-    }
+  const handleRowMouseEnter = useCallback((index: number) => {
+    if (disableMouseRef.current || isKeyboardNavRef.current) return;
+    selectedIndexRef.current = index;
+    setSelectedIndex(index);
   }, []);
 
   const cycleFolder = useCallback(
@@ -136,7 +138,11 @@ export function BookmarkManager({
 
       const nextFolder = folderTabs[nextIdx] === "All" ? null : folderTabs[nextIdx];
       setSelectedFolder(nextFolder);
+      selectedIndexRef.current = 0;
       setSelectedIndex(0);
+      if (listRef.current) {
+        listRef.current.scrollTop = 0;
+      }
     },
     [folderTabs, selectedFolder],
   );
@@ -213,7 +219,11 @@ export function BookmarkManager({
 
   const clearQuery = useCallback(() => {
     setQuery("");
+    selectedIndexRef.current = 0;
     setSelectedIndex(0);
+    if (listRef.current) {
+      listRef.current.scrollTop = 0;
+    }
     inputRef.current?.focus();
   }, []);
 
@@ -224,7 +234,6 @@ export function BookmarkManager({
   const queryRef = useRef(query);
   const onCloseRef = useRef(onClose);
   const cycleFolderRef = useRef(cycleFolder);
-  const updateSelectedIndexRef = useRef(updateSelectedIndex);
 
   selectedIndexRef.current = selectedIndex;
   countRef.current = filteredBookmarks.length;
@@ -232,7 +241,78 @@ export function BookmarkManager({
   queryRef.current = query;
   onCloseRef.current = onClose;
   cycleFolderRef.current = cycleFolder;
-  updateSelectedIndexRef.current = updateSelectedIndex;
+
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+      if (
+        lastMousePosRef.current.x !== -1 &&
+        (Math.abs(event.clientX - lastMousePosRef.current.x) > 1 ||
+         Math.abs(event.clientY - lastMousePosRef.current.y) > 1)
+      ) {
+        if (isKeyboardNavRef.current) {
+          isKeyboardNavRef.current = false;
+          setIsKeyboardNav(false);
+        }
+      }
+      lastMousePosRef.current = { x: event.clientX, y: event.clientY };
+    };
+
+    const handleWheel = () => {
+      if (isKeyboardNavRef.current) {
+        isKeyboardNavRef.current = false;
+        setIsKeyboardNav(false);
+      }
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    window.addEventListener("wheel", handleWheel, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("wheel", handleWheel);
+    };
+  }, []);
+
+  useEffect(() => {
+    setSelectedIndex((prev) => {
+      if (filteredBookmarks.length === 0) return 0;
+      const clamped = Math.min(prev, filteredBookmarks.length - 1);
+      selectedIndexRef.current = clamped;
+      return clamped;
+    });
+  }, [filteredBookmarks.length]);
+
+  useLayoutEffect(() => {
+    if (!scrollNeededRef.current) return;
+    scrollNeededRef.current = false;
+
+    const list = listRef.current;
+    if (!list) return;
+
+    const count = filteredBookmarks.length;
+    if (count <= 1 || selectedIndex === 0) {
+      list.scrollTop = 0;
+      return;
+    }
+
+    if (selectedIndex === count - 1) {
+      list.scrollTop = list.scrollHeight;
+      return;
+    }
+
+    const row = rowRefs.current[selectedIndex] ?? list.querySelector<HTMLElement>(`[data-index="${selectedIndex}"]`);
+    if (!row) return;
+
+    const listRect = list.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const topPadding = 6;
+    const bottomPadding = 6;
+
+    if (rowRect.top < listRect.top + topPadding) {
+      list.scrollTop -= Math.ceil(listRect.top + topPadding - rowRect.top);
+    } else if (rowRect.bottom > listRect.bottom - bottomPadding) {
+      list.scrollTop += Math.ceil(rowRect.bottom - (listRect.bottom - bottomPadding));
+    }
+  }, [selectedIndex, filteredBookmarks.length]);
 
   useMountEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -240,7 +320,11 @@ export function BookmarkManager({
         event.preventDefault();
         if (queryRef.current) {
           setQuery("");
+          selectedIndexRef.current = 0;
           setSelectedIndex(0);
+          if (listRef.current) {
+            listRef.current.scrollTop = 0;
+          }
           inputRef.current?.focus();
         } else {
           onCloseRef.current();
@@ -249,17 +333,100 @@ export function BookmarkManager({
         event.preventDefault();
         const count = countRef.current;
         if (count > 0) {
-          // Wrap around: when reaching the end, go back to start
-          const next = (selectedIndexRef.current + 1) % count;
-          updateSelectedIndexRef.current(next);
+          const current = selectedIndexRef.current;
+          if (event.metaKey || event.ctrlKey) {
+            if (current < count - 1) {
+              scrollNeededRef.current = true;
+              isKeyboardNavRef.current = true;
+              setIsKeyboardNav(true);
+              selectedIndexRef.current = count - 1;
+              setSelectedIndex(count - 1);
+            }
+          } else if (current < count - 1) {
+            // Do not cycle: stop at the last result
+            scrollNeededRef.current = true;
+            isKeyboardNavRef.current = true;
+            setIsKeyboardNav(true);
+            const next = current + 1;
+            selectedIndexRef.current = next;
+            setSelectedIndex(next);
+          }
         }
       } else if (event.key === "ArrowUp") {
         event.preventDefault();
         const count = countRef.current;
         if (count > 0) {
-          // Wrap around: when at the start, go to the end
-          const next = (selectedIndexRef.current - 1 + count) % count;
-          updateSelectedIndexRef.current(next);
+          const current = selectedIndexRef.current;
+          if (event.metaKey || event.ctrlKey) {
+            if (current > 0) {
+              scrollNeededRef.current = true;
+              isKeyboardNavRef.current = true;
+              setIsKeyboardNav(true);
+              selectedIndexRef.current = 0;
+              setSelectedIndex(0);
+            }
+          } else if (current > 0) {
+            // Do not cycle: stop at the first result
+            scrollNeededRef.current = true;
+            isKeyboardNavRef.current = true;
+            setIsKeyboardNav(true);
+            const next = current - 1;
+            selectedIndexRef.current = next;
+            setSelectedIndex(next);
+          }
+        }
+      } else if (event.key === "PageDown") {
+        event.preventDefault();
+        const count = countRef.current;
+        if (count > 0) {
+          const current = selectedIndexRef.current;
+          const next = Math.min(count - 1, current + 6);
+          if (next !== current) {
+            scrollNeededRef.current = true;
+            isKeyboardNavRef.current = true;
+            setIsKeyboardNav(true);
+            selectedIndexRef.current = next;
+            setSelectedIndex(next);
+          }
+        }
+      } else if (event.key === "PageUp") {
+        event.preventDefault();
+        const count = countRef.current;
+        if (count > 0) {
+          const current = selectedIndexRef.current;
+          const next = Math.max(0, current - 6);
+          if (next !== current) {
+            scrollNeededRef.current = true;
+            isKeyboardNavRef.current = true;
+            setIsKeyboardNav(true);
+            selectedIndexRef.current = next;
+            setSelectedIndex(next);
+          }
+        }
+      } else if (event.key === "Home") {
+        const isInput = document.activeElement === inputRef.current;
+        if (!isInput || event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          if (selectedIndexRef.current !== 0) {
+            scrollNeededRef.current = true;
+            isKeyboardNavRef.current = true;
+            setIsKeyboardNav(true);
+            selectedIndexRef.current = 0;
+            setSelectedIndex(0);
+          }
+        }
+      } else if (event.key === "End") {
+        const isInput = document.activeElement === inputRef.current;
+        if (!isInput || event.ctrlKey || event.metaKey) {
+          event.preventDefault();
+          const count = countRef.current;
+          if (count > 0 && selectedIndexRef.current !== count - 1) {
+            scrollNeededRef.current = true;
+            isKeyboardNavRef.current = true;
+            setIsKeyboardNav(true);
+            selectedIndexRef.current = count - 1;
+            setSelectedIndex(count - 1);
+          }
         }
       } else if (event.key === "ArrowLeft") {
         const isInput = document.activeElement === inputRef.current;
@@ -357,7 +524,11 @@ export function BookmarkManager({
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
+              selectedIndexRef.current = 0;
               setSelectedIndex(0);
+              if (listRef.current) {
+                listRef.current.scrollTop = 0;
+              }
             }}
             placeholder={selectedFolder ? `Search in ${selectedFolder}...` : "Search bookmarks..."}
             aria-label="Search bookmarks"
@@ -387,6 +558,7 @@ export function BookmarkManager({
         <div
           ref={listRef}
           className="bookmark-list"
+          data-keyboard-nav={isKeyboardNav ? "true" : "false"}
           role="listbox"
           aria-label="Bookmarks"
         >
@@ -402,13 +574,14 @@ export function BookmarkManager({
               return (
                 <div
                   key={bookmark.id}
+                  data-index={index}
                   ref={(el) => {
                     rowRefs.current[index] = el;
                   }}
                   className={`bookmark-row ${isSelected ? "selected" : ""}`}
                   role="option"
                   aria-selected={isSelected}
-                  onMouseEnter={disableMouse ? undefined : () => updateSelectedIndex(index)}
+                  onMouseEnter={disableMouse ? undefined : () => handleRowMouseEnter(index)}
                   onClick={disableMouse ? undefined : () => openSelected(bookmark)}
                 >
                   <div className="bookmark-row-left">

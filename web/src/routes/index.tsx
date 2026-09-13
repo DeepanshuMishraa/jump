@@ -146,7 +146,7 @@ function Home() {
 					<a className="brand" href="/" aria-label="Jump home">
 						<BrandMark />
 						<span className="brand-name">Jump</span>
-						<span className="version">v0.1.6</span>
+						<span className="version">v0.1.7</span>
 					</a>
 
 					<div className="nav-side">

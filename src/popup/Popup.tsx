@@ -19,7 +19,7 @@ export function Popup() {
   const movePaletteShortcut = isMac ? "⌥ + drag" : "Alt + drag";
   const version = typeof chrome !== "undefined" && chrome.runtime?.getManifest?.()?.version
     ? chrome.runtime.getManifest().version
-    : "0.1.6";
+    : "0.1.7";
 
   useMountEffect(() => {
     const readRevision = settingsRevision.current;
