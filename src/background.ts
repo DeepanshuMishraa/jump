@@ -148,14 +148,28 @@ async function capturePreview(tabId: number, windowId: number) {
   }
 }
 
+function injectContentScript(tabId: number) {
+  return chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["assets/content.js"],
+  });
+}
+
 async function sendToTab(tab: chrome.tabs.Tab, message: BrowserMessage) {
   if (tab.id === undefined) return false;
   try {
     await chrome.tabs.sendMessage(tab.id, message);
     return true;
   } catch {
-    // Content scripts run declaratively on regular web pages. Browser-owned
-    // pages and tabs opened before an extension reload cannot host the palette.
+    // No live content script: the tab predates an extension reload, or was
+    // discarded when we injected on install. Inject one and retry.
+  }
+  try {
+    await injectContentScript(tab.id);
+    await chrome.tabs.sendMessage(tab.id, message);
+    return true;
+  } catch {
+    // Browser-owned pages cannot host the palette.
     return false;
   }
 }
@@ -467,4 +481,15 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, sender, sendRespo
   }
 
   return false;
+});
+
+// Reloading or updating the extension orphans the content scripts in tabs that
+// are already open, so the palette would not open there until a page reload.
+// Inject fresh copies into those tabs instead.
+chrome.runtime.onInstalled.addListener(async () => {
+  const tabs = await chrome.tabs.query({ url: ["http://*/*", "https://*/*", "file:///*"] });
+  await Promise.all(tabs.map((tab) => {
+    if (tab.id === undefined || tab.discarded) return undefined;
+    return injectContentScript(tab.id).catch(() => undefined);
+  }));
 });

@@ -3,6 +3,7 @@ import { activateTab, getBrowserHistory, getTabPreviews, getTabs, notifyPaletteC
 import { ArrowRightIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { canStartPaletteDrag, dragPreviewCellForPoint, isAltModifierActive, nextFreeDragPosition, snapPalettePosition } from "./paletteDrag";
+import { emacsNavigationKey } from "./paletteKeys";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { stalePreviewTabIds } from "./previewCache";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
@@ -409,11 +410,12 @@ export function App({
         return;
       }
 
-      if (event.key === "ArrowLeft" || (event.key === "Tab" && event.shiftKey)) {
+      const navKey = emacsNavigationKey(event);
+      if (event.key === "ArrowLeft" || navKey === "ArrowUp" || (event.key === "Tab" && event.shiftKey)) {
         event.preventDefault();
         event.stopPropagation();
         setSelectedIndex((curr) => (tabsRef.current.length ? (curr - 1 + tabsRef.current.length) % tabsRef.current.length : 0));
-      } else if (event.key === "ArrowRight" || event.key === "Tab") {
+      } else if (event.key === "ArrowRight" || navKey === "ArrowDown" || event.key === "Tab") {
         event.preventDefault();
         event.stopPropagation();
         setSelectedIndex((curr) => (tabsRef.current.length ? (curr + 1) % tabsRef.current.length : 0));
@@ -503,7 +505,8 @@ export function App({
   }, [activeIndex, handleQueryChange, results]);
 
   function handleSearchKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Escape") {
+    const key = emacsNavigationKey(event) ?? event.key;
+    if (key === "Escape") {
       event.preventDefault();
       if (query) {
         handleQueryChange("");
@@ -514,27 +517,27 @@ export function App({
       return;
     }
 
-    if (!isExpanded && (event.key === "ArrowDown" || event.key === "Tab")) {
+    if (!isExpanded && (key === "ArrowDown" || key === "Tab")) {
       event.preventDefault();
       setIsExpanded(true);
       setSelectedIndex(0);
       return;
     }
 
-    if ((isExpanded || Boolean(query.trim())) && event.key === "ArrowRight" && autocompleteFocusedSuggestion()) {
+    if ((isExpanded || Boolean(query.trim())) && key === "ArrowRight" && autocompleteFocusedSuggestion()) {
       event.preventDefault();
-    } else if (isGallery && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+    } else if (isGallery && (key === "ArrowLeft" || key === "ArrowRight")) {
       event.preventDefault();
-      const direction = event.key === "ArrowRight" ? 1 : -1;
+      const direction = key === "ArrowRight" ? 1 : -1;
       setSelectedIndex((index) => Math.max(0, Math.min(index + direction, results.length - 1)));
-    } else if (event.key === "ArrowDown") {
+    } else if (key === "ArrowDown") {
       event.preventDefault();
       setIsExpanded(true);
       const step = isGallery ? 2 : 1;
       setSelectedIndex((index) => isGallery
         ? Math.min(index + step, Math.max(0, results.length - 1))
         : results.length ? (index + step) % results.length : 0);
-    } else if (event.key === "ArrowUp") {
+    } else if (key === "ArrowUp") {
       event.preventDefault();
       const step = isGallery ? 2 : 1;
       if (activeIndex < step && !query) {
@@ -544,7 +547,7 @@ export function App({
           ? Math.max(index - step, 0)
           : results.length ? (index - step + results.length) % results.length : 0);
       }
-    } else if (event.key === "Enter") {
+    } else if (key === "Enter") {
       event.preventDefault();
       executeResult(results[activeIndex]);
     }
