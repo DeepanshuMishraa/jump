@@ -40,6 +40,7 @@ function openPalette(message: Extract<BrowserMessage, { type: "open-palette" }> 
   style.textContent = cssText;
   shadowRoot.append(style);
   const mountPoint = document.createElement("div");
+  mountPoint.className = "jump-root";
   shadowRoot.append(mountPoint);
   document.documentElement.append(host);
   root = createRoot(mountPoint);
