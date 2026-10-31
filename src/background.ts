@@ -468,3 +468,17 @@ chrome.runtime.onMessage.addListener((message: BrowserMessage, sender, sendRespo
 
   return false;
 });
+
+// Reloading or updating the extension orphans the content scripts in tabs that
+// are already open, so the palette would not open there until a page reload.
+// Inject fresh copies into those tabs instead.
+chrome.runtime.onInstalled.addListener(async () => {
+  const tabs = await chrome.tabs.query({ url: ["http://*/*", "https://*/*", "file:///*"] });
+  await Promise.all(tabs.map((tab) => {
+    if (tab.id === undefined || tab.discarded) return undefined;
+    return chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["assets/content.js"],
+    }).catch(() => undefined);
+  }));
+});
