@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { getBookmarks, openBookmark } from "../browser";
-import { BookmarkIcon, FolderIcon, GlobeIcon, SearchIcon, XIcon } from "../icons";
+import { BookmarkIcon, ChevronDownIcon, ChevronLeftIcon, CornerDownLeftIcon, GlobeIcon } from "../icons";
 import { useMountEffect } from "../hooks/useMountEffect";
 import { dragPreviewCellForPoint, isAltModifierActive, nextFreeDragPosition, snapPalettePosition } from "../paletteDrag";
 import { saveStoredSettings } from "../settings";
-import type { BookmarkItem, ColorTheme, PalettePosition } from "../types";
+import type { BookmarkItem, ColorScheme, ColorTheme, PalettePosition } from "../types";
 
 function getDisplayDomain(url: string): string {
   try {
@@ -13,6 +13,15 @@ function getDisplayDomain(url: string): string {
   } catch {
     return "";
   }
+}
+
+function formatAdded(timestamp?: number) {
+  if (!timestamp) return "Unknown";
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return "Unknown";
+  const day = date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  const time = date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${day} at ${time}`;
 }
 
 function BookmarkFavicon({ bookmark }: { bookmark: BookmarkItem }) {
@@ -37,9 +46,75 @@ function BookmarkFavicon({ bookmark }: { bookmark: BookmarkItem }) {
   );
 }
 
+function BookmarkDetail({
+  bookmark,
+  folderLabel,
+  disableMouse,
+  onCycleFolder,
+  canCycle,
+}: {
+  bookmark?: BookmarkItem;
+  folderLabel: string;
+  disableMouse: boolean;
+  onCycleFolder: () => void;
+  canCycle: boolean;
+}) {
+  const domain = bookmark ? getDisplayDomain(bookmark.url) : "";
+  const folder = bookmark?.folderPath.map((part) => part.trim()).filter(Boolean).at(-1) || "Bookmarks";
+
+  return (
+    <section className="bookmark-detail" aria-label="Bookmark details">
+      <div className="bookmark-detail-top">
+        <button
+          type="button"
+          className="bookmark-folder-menu"
+          onClick={disableMouse || !canCycle ? undefined : onCycleFolder}
+          disabled={!canCycle}
+          aria-label={`Folder ${folderLabel}. Switch folder`}
+        >
+          <BookmarkIcon size={15} />
+          <span>{folderLabel}</span>
+          <ChevronDownIcon size={14} />
+        </button>
+      </div>
+
+      {bookmark ? (
+        <>
+          <div className="bookmark-detail-hero">
+            <span className="bookmark-favicon is-large">
+              <BookmarkFavicon bookmark={bookmark} />
+            </span>
+            <h2 className="bookmark-detail-title">{bookmark.title || domain || "Untitled"}</h2>
+            <p className="bookmark-detail-url">{bookmark.url}</p>
+          </div>
+          <p className="bookmark-info-label">Information</p>
+          <div className="bookmark-info">
+            <div className="bookmark-info-row">
+              <span>Address</span>
+              <span className="bookmark-info-value is-address">{bookmark.url}</span>
+            </div>
+            <div className="bookmark-info-row">
+              <span>In</span>
+              <span className="bookmark-info-value">{folder}</span>
+            </div>
+            <div className="bookmark-info-row">
+              <span>Added</span>
+              <span className="bookmark-info-value">{formatAdded(bookmark.dateAdded)}</span>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="bookmark-detail-empty">
+          <span>Select a bookmark</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function BookmarkManager({
   theme,
-  useVibrancy = true,
+  colorScheme = "dark",
   opacity = 1,
   disableMouse = false,
   position = { x: 0.5, y: 0.28 },
@@ -47,7 +122,7 @@ export function BookmarkManager({
   onClose,
 }: {
   theme: ColorTheme;
-  useVibrancy?: boolean;
+  colorScheme?: ColorScheme;
   opacity?: number;
   disableMouse?: boolean;
   position?: PalettePosition;
@@ -226,6 +301,19 @@ export function BookmarkManager({
     }
     inputRef.current?.focus();
   }, []);
+
+  const goBack = useCallback(() => {
+    if (query) {
+      clearQuery();
+      return;
+    }
+    if (selectedFolder) {
+      setSelectedFolder(null);
+      selectedIndexRef.current = 0;
+      setSelectedIndex(0);
+      if (listRef.current) listRef.current.scrollTop = 0;
+    }
+  }, [clearQuery, query, selectedFolder]);
 
   // Keyboard navigation refs
   const selectedIndexRef = useRef(selectedIndex);
@@ -469,7 +557,7 @@ export function BookmarkManager({
     <div
       className={`palette-backdrop ${isClosing ? "is-closing" : ""}`}
       data-theme={theme}
-      data-vibrancy={useVibrancy ? "on" : "off"}
+      data-scheme={colorScheme}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -497,110 +585,119 @@ export function BookmarkManager({
         aria-label="Bookmarks"
         onPointerDown={startDrag}
       >
-        {/* Minimal Search Row */}
-        <div className="search-bar-row">
-          <BookmarkIcon size={16} className="search-lead-icon" />
+        <div className="bookmark-body">
+          <div className="bookmark-pane">
+            <div className="bookmark-search">
+              <button
+                type="button"
+                className="bookmark-back"
+                onClick={disableMouse ? undefined : goBack}
+                aria-label={query ? "Clear search" : selectedFolder ? "Show all bookmarks" : "Back"}
+                disabled={!query && !selectedFolder}
+              >
+                <ChevronLeftIcon size={18} />
+              </button>
+              <input
+                ref={inputRef}
+                type="text"
+                className="search-input"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  selectedIndexRef.current = 0;
+                  setSelectedIndex(0);
+                  if (listRef.current) {
+                    listRef.current.scrollTop = 0;
+                  }
+                }}
+                placeholder="Search bookmarks"
+                aria-label="Search bookmarks"
+                autoComplete="off"
+                spellCheck="false"
+              />
+            </div>
 
-          {availableFolders.length > 0 ? (
-            <button
-              type="button"
-              className="bookmark-scope-pill"
-              onClick={disableMouse ? undefined : () => cycleFolder("next")}
-              title="Switch folder (← / →)"
-              aria-label={`Current folder: ${selectedFolder ?? "All"}. Press Left or Right arrow to cycle`}
+            <div
+              ref={listRef}
+              className="bookmark-list"
+              data-keyboard-nav={isKeyboardNav ? "true" : "false"}
+              role="listbox"
+              aria-label="Bookmarks"
             >
-              <FolderIcon size={11} className="bookmark-scope-icon" />
-              <span>{selectedFolder ?? "All"}</span>
-              <span className="bookmark-scope-arrow" aria-hidden="true">
-                ▾
-              </span>
-            </button>
-          ) : null}
+              {filteredBookmarks.length === 0 ? (
+                <div className="bookmark-empty-state">
+                  <span>{query ? "No matching bookmarks" : "No bookmarks found"}</span>
+                </div>
+              ) : (
+                filteredBookmarks.map((bookmark, index) => {
+                  const isSelected = index === selectedIndex;
+                  const domain = getDisplayDomain(bookmark.url);
 
-          <input
-            ref={inputRef}
-            type="text"
-            className="search-input"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              selectedIndexRef.current = 0;
-              setSelectedIndex(0);
-              if (listRef.current) {
-                listRef.current.scrollTop = 0;
-              }
-            }}
-            placeholder={selectedFolder ? `Search in ${selectedFolder}...` : "Search bookmarks..."}
-            aria-label="Search bookmarks"
-            autoComplete="off"
-            spellCheck="false"
+                  return (
+                    <div
+                      key={bookmark.id}
+                      data-index={index}
+                      ref={(el) => {
+                        rowRefs.current[index] = el;
+                      }}
+                      className={`bookmark-row ${isSelected ? "selected" : ""}`}
+                      role="option"
+                      aria-selected={isSelected}
+                      onMouseEnter={disableMouse ? undefined : () => handleRowMouseEnter(index)}
+                      onClick={disableMouse ? undefined : () => {
+                        if (index === selectedIndex) openSelected(bookmark);
+                        else {
+                          selectedIndexRef.current = index;
+                          setSelectedIndex(index);
+                        }
+                      }}
+                    >
+                      <span className="bookmark-favicon">
+                        <BookmarkFavicon bookmark={bookmark} />
+                      </span>
+                      <span className="bookmark-copy">
+                        <span className="bookmark-title">{bookmark.title || domain || "Untitled"}</span>
+                        {domain ? <span className="bookmark-domain">{domain}</span> : null}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <BookmarkDetail
+            bookmark={filteredBookmarks[selectedIndex]}
+            folderLabel={selectedFolder ?? "Bookmarks"}
+            disableMouse={disableMouse}
+            onCycleFolder={() => cycleFolder("next")}
+            canCycle={availableFolders.length > 0}
           />
-
-          {query ? (
-            <button
-              type="button"
-              className="clear-icon-btn"
-              onClick={clearQuery}
-              aria-label="Clear search"
-            >
-              <XIcon size={13} />
-            </button>
-          ) : null}
-
-          <span className="bookmark-count-pill" aria-label={`${filteredBookmarks.length} bookmarks`}>
-            {filteredBookmarks.length}
-          </span>
         </div>
 
-        <div className="palette-divider" />
-
-        {/* Bookmark List */}
-        <div
-          ref={listRef}
-          className="bookmark-list"
-          data-keyboard-nav={isKeyboardNav ? "true" : "false"}
-          role="listbox"
-          aria-label="Bookmarks"
-        >
-          {filteredBookmarks.length === 0 ? (
-            <div className="bookmark-empty-state">
-              <span>{query ? "No matching bookmarks" : "No bookmarks found"}</span>
-            </div>
-          ) : (
-            filteredBookmarks.map((bookmark, index) => {
-              const isSelected = index === selectedIndex;
-              const domain = getDisplayDomain(bookmark.url);
-
-              return (
-                <div
-                  key={bookmark.id}
-                  data-index={index}
-                  ref={(el) => {
-                    rowRefs.current[index] = el;
-                  }}
-                  className={`bookmark-row ${isSelected ? "selected" : ""}`}
-                  role="option"
-                  aria-selected={isSelected}
-                  onMouseEnter={disableMouse ? undefined : () => handleRowMouseEnter(index)}
-                  onClick={disableMouse ? undefined : () => openSelected(bookmark)}
-                >
-                  <div className="bookmark-row-left">
-                    <span className="bookmark-favicon">
-                      <BookmarkFavicon bookmark={bookmark} />
-                    </span>
-                    <span className="bookmark-title">{bookmark.title}</span>
-                  </div>
-
-                  <div className="bookmark-row-right">
-                    {domain ? <span className="bookmark-domain">{domain}</span> : null}
-                    <span className="bookmark-return-hint" aria-hidden="true">
-                      ↵
-                    </span>
-                  </div>
-                </div>
-              );
-            })
-          )}
+        <div className="bookmark-footer">
+          <button
+            type="button"
+            className="bookmark-open-btn"
+            onClick={disableMouse ? undefined : () => openSelected()}
+            disabled={filteredBookmarks.length === 0}
+          >
+            Open
+            <span className="bookmark-key" aria-hidden="true">
+              <CornerDownLeftIcon size={14} />
+            </span>
+          </button>
+          <button
+            type="button"
+            className="bookmark-actions-btn"
+            onClick={disableMouse ? undefined : () => cycleFolder("next")}
+            disabled={availableFolders.length === 0}
+            title="Switch folder"
+            aria-label={`Actions. Current folder ${selectedFolder ?? "Bookmarks"}. Switch folder`}
+          >
+            Actions
+            <span className="bookmark-key" aria-hidden="true">K</span>
+          </button>
         </div>
       </div>
     </div>

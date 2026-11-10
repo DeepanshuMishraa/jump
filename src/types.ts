@@ -13,6 +13,8 @@ export type ColorTheme =
   | "gruvbox-light"
   | "vesper";
 
+export type ColorScheme = "light" | "dark";
+
 export type ViewMode = "list" | "gallery";
 export type TabSwitchMode = "recent" | "order";
 export type PaletteViewMode = "collapsed" | "expanded";
@@ -34,7 +36,7 @@ export type PinnedTab = {
 export type UserSettings = {
   viewMode: ViewMode;
   theme: ColorTheme;
-  useVibrancy: boolean;
+  colorScheme: ColorScheme;
   disableMouseTabSwitcher: boolean;
   disableMouseCommandPalette: boolean;
   disableMouseBookmarks: boolean;

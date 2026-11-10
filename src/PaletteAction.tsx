@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowRightIcon, GlobeIcon, PinIcon, SearchIcon } from "./icons";
+import { CornerDownLeftIcon, GlobeIcon, PinIcon, SearchIcon } from "./icons";
 import type { SearchResult } from "./paletteSearch";
 
 function historyHostname(url: string) {
@@ -74,7 +74,7 @@ export function PaletteAction({
     : isHistory ? "Recent search"
     : isVisited ? historyHostname(result.item.url)
     : "Search on Web";
-  const actionLabel = isPinned || isBang || isUrl || isVisited ? "Open" : isHistory ? "Search again" : "Search";
+  const actionLabel = isPinned || isBang || isUrl || isVisited ? "Open Tab" : isHistory ? "Search again" : "Search";
 
   return (
     <div
@@ -100,13 +100,15 @@ export function PaletteAction({
         <div className="row-content">
           <span className="row-title">{title}</span>
           {isPinned && <PinIcon className="tab-pinned-icon" size={12} />}
-          <span className="row-domain">— {domain}</span>
+          <span className="row-domain">{domain}</span>
         </div>
       </div>
 
       <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
         <span className="action-text">{actionLabel}</span>
-        <span className="action-arrow-badge"><ArrowRightIcon size={12} /></span>
+        {isSelected ? (
+          <span className="action-arrow-badge"><CornerDownLeftIcon size={13} /></span>
+        ) : null}
       </div>
     </div>
   );

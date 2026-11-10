@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { DEFAULT_SETTINGS, parseStoredSettings } from "../src/settings.ts";
+import { DEFAULT_SETTINGS, parseStoredSettings, themeForScheme } from "../src/settings.ts";
 import { resolveSettingsRead } from "../src/popup/settingsState.ts";
 
 function installLocalStorage() {
@@ -76,7 +76,6 @@ test("persisted settings validate fields independently", () => {
     parseStoredSettings({ useVibrancy: false, disableMouseTabSwitcher: true, disableMouseCommandPalette: "yes", pinnedTabs: [{ tabId: 12, url: "https://example.com" }, { tabId: 0, url: "bad" }] }),
     {
       ...DEFAULT_SETTINGS,
-      useVibrancy: false,
       disableMouseTabSwitcher: true,
       pinnedTabs: [{
         tabId: 12,
@@ -86,6 +85,19 @@ test("persisted settings validate fields independently", () => {
         hostname: "example.com",
       }],
     },
+  );
+});
+
+test("color scheme selects the light or dark variant of a theme", () => {
+  assert.equal(themeForScheme("catppuccin-mocha", "light"), "catppuccin-latte");
+  assert.equal(themeForScheme("catppuccin-latte", "dark"), "catppuccin-mocha");
+  assert.equal(themeForScheme("rose-pine-moon", "light"), "rose-pine-dawn");
+  assert.equal(themeForScheme("gruvbox-light", "dark"), "gruvbox-dark");
+  assert.equal(themeForScheme("tokyo-night", "light"), "default");
+  assert.deepEqual(parseStoredSettings({ theme: "gruvbox-light" }).colorScheme, "light");
+  assert.deepEqual(
+    parseStoredSettings({ colorScheme: "light", theme: "catppuccin-macchiato" }),
+    { ...DEFAULT_SETTINGS, colorScheme: "light", theme: "catppuccin-latte" },
   );
 });
 

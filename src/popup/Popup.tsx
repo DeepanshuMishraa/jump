@@ -1,10 +1,25 @@
 import { useRef, useState } from "react";
 import { openShortcutSettings } from "../browser";
 import { CommandIcon, ArrowUpRightIcon, InfoIcon } from "../icons";
-import { DEFAULT_SETTINGS, getStoredSettings, saveStoredSettings, THEMES } from "../settings";
-import type { PaletteViewMode, TabSwitchMode, UserSettings } from "../types";
+import { DEFAULT_SETTINGS, getStoredSettings, saveStoredSettings, themeForScheme, themesForScheme, type ThemeInfo } from "../settings";
+import type { ColorScheme, PaletteViewMode, TabSwitchMode, UserSettings } from "../types";
 import { resolveSettingsRead } from "./settingsState";
 import { useMountEffect } from "../hooks/useMountEffect";
+
+type ThemeGroup = {
+  theme: ThemeInfo;
+  variants: ThemeInfo[];
+};
+
+function groupThemes(themes: ThemeInfo[]): ThemeGroup[] {
+  const groups: ThemeGroup[] = [];
+  for (const theme of themes) {
+    const existing = groups.find((group) => group.theme.name === theme.name);
+    if (existing) existing.variants.push(theme);
+    else groups.push({ theme, variants: [] });
+  }
+  return groups;
+}
 
 export function Popup() {
   const [settings, setSettings] = useState<UserSettings>(DEFAULT_SETTINGS);
@@ -66,13 +81,13 @@ export function Popup() {
     }
   };
 
-  const updateSetting = async <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
+  const updateSettings = async (partial: Partial<UserSettings>) => {
     const saveRevision = settingsRevision.current + 1;
     settingsRevision.current = saveRevision;
     const previousSettings = settings;
-    setSettings((current) => ({ ...current, [key]: value }));
+    setSettings((current) => ({ ...current, ...partial }));
     try {
-      const next = await saveStoredSettings({ [key]: value });
+      const next = await saveStoredSettings(partial);
       if (settingsRevision.current === saveRevision) setSettings(next);
     } catch {
       if (settingsRevision.current === saveRevision) {
@@ -85,8 +100,21 @@ export function Popup() {
     }
   };
 
+  const updateSetting = async <K extends keyof UserSettings>(key: K, value: UserSettings[K]) => {
+    await updateSettings({ [key]: value });
+  };
+
+  const visibleThemes = themesForScheme(settings.colorScheme);
+  const themeGroups = groupThemes(visibleThemes);
+  const chooseScheme = (scheme: ColorScheme) => {
+    void updateSettings({
+      colorScheme: scheme,
+      theme: themeForScheme(settings.theme, scheme),
+    });
+  };
+
   return (
-    <main className="popup-container" data-theme={settings.theme}>
+    <main className="popup-container" data-theme={settings.theme} data-scheme={settings.colorScheme}>
       <header className="popup-header">
         <div className="popup-brand">
           <span className="popup-mark" aria-hidden="true">
@@ -102,10 +130,30 @@ export function Popup() {
         </div>
       </header>
 
+      <section className="popup-section" aria-labelledby="appearance-label">
+        <div className="popup-section-heading">
+          <span id="appearance-label">Appearance</span>
+          <span className="popup-section-context">Light or dark</span>
+        </div>
+        <div className="popup-segmented" role="group" aria-label="Color scheme">
+          {(["dark", "light"] as const satisfies readonly ColorScheme[]).map((scheme) => (
+            <button
+              key={scheme}
+              type="button"
+              className={`popup-segmented-item ${settings.colorScheme === scheme ? "active" : ""}`}
+              aria-pressed={settings.colorScheme === scheme}
+              onClick={() => chooseScheme(scheme)}
+            >
+              <span>{scheme === "dark" ? "Dark" : "Light"}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+
       <section className="popup-section" aria-labelledby="theme-label">
         <div className="popup-section-heading">
           <span id="theme-label">Theme</span>
-          <span className="popup-section-context">Palette</span>
+          <span className="popup-section-context">{settings.colorScheme === "light" ? "Light palettes" : "Dark palettes"}</span>
         </div>
         <label className="popup-theme-select-wrap">
           <span className="sr-only">Choose a theme</span>
@@ -113,44 +161,20 @@ export function Popup() {
             className="popup-theme-select"
             value={settings.theme}
             onChange={(event) => {
-              const theme = THEMES.find((item) => item.id === event.target.value)?.id;
+              const theme = visibleThemes.find((item) => item.id === event.target.value)?.id;
               if (theme) void updateSetting("theme", theme);
             }}
           >
-            {THEMES.filter((theme) => !["catppuccin-", "rose-pine-", "gruvbox-"].some((prefix) => theme.id.startsWith(prefix))).map((theme) => (
-              <option key={theme.id} value={theme.id}>{theme.name} · {theme.badge}</option>
+            {themeGroups.map((group) => group.variants.length === 0 ? (
+              <option key={group.theme.id} value={group.theme.id}>{group.theme.name} · {group.theme.badge}</option>
+            ) : (
+              <optgroup key={group.theme.name} label={group.theme.name}>
+                {[group.theme, ...group.variants].map((theme) => (
+                  <option key={theme.id} value={theme.id}>{theme.badge}</option>
+                ))}
+              </optgroup>
             ))}
-            <optgroup label="Catppuccin">
-              {THEMES.filter((theme) => theme.id.startsWith("catppuccin-")).map((theme) => (
-                <option key={theme.id} value={theme.id}>{theme.badge}</option>
-              ))}
-            </optgroup>
-            <optgroup label="Rosé Pine">
-              {THEMES.filter((theme) => theme.id.startsWith("rose-pine-")).map((theme) => (
-                <option key={theme.id} value={theme.id}>{theme.badge}</option>
-              ))}
-            </optgroup>
-            <optgroup label="Gruvbox">
-              {THEMES.filter((theme) => theme.id.startsWith("gruvbox-")).map((theme) => (
-                <option key={theme.id} value={theme.id}>{theme.badge}</option>
-              ))}
-            </optgroup>
           </select>
-        </label>
-      </section>
-
-      <section className="popup-section" aria-labelledby="appearance-label">
-        <div className="popup-section-heading">
-          <span id="appearance-label">Appearance</span>
-          <span className="popup-section-context">Overlays</span>
-        </div>
-        <label className="popup-toggle-row">
-          <span>Background vibrancy</span>
-          <input
-            type="checkbox"
-            checked={settings.useVibrancy}
-            onChange={(event) => void updateSetting("useVibrancy", event.target.checked)}
-          />
         </label>
       </section>
 

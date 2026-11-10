@@ -16,20 +16,21 @@ export function SwitcherCard({ tab, isSelected, previewUrl, index, onClick, onMo
   const effectivePreview = previewUrl;
   return (
     <div data-switcher-index={index} className={`switcher-card ${isSelected ? "is-selected" : ""}`} onClick={onClick} onMouseEnter={onMouseEnter} role="option" aria-selected={isSelected}>
-      <div className="switcher-thumbnail">
-        {effectivePreview ? <img src={effectivePreview} alt="" className="switcher-thumbnail-image" loading="eager" decoding="async" /> : (
-          <div className="switcher-placeholder">
-            <div className="switcher-placeholder-icon"><TabFavicon tab={tab} size={32} /></div>
-            <span className="switcher-placeholder-domain">{tab.hostname || "Web Page"}</span>
-          </div>
-        )}
-        <div className="switcher-thumbnail-glass" />
-      </div>
-      <div className="switcher-card-footer">
-        <TabFavicon tab={tab} size={18} />
-        <span className="switcher-card-title">{tab.title}</span>
-        {tab.pinned && <PinIcon className="tab-pinned-icon" size={13} />}
-        <TabSoundIndicator tab={tab} onToggleMute={onToggleMute} />
+      <div className="switcher-plate">
+        <div className="switcher-thumbnail">
+          {effectivePreview ? <img src={effectivePreview} alt="" className="switcher-thumbnail-image" loading="eager" decoding="async" /> : (
+            <div className="switcher-placeholder">
+              <div className="switcher-placeholder-icon"><TabFavicon tab={tab} size={32} /></div>
+              <span className="switcher-placeholder-domain">{tab.hostname || "Web Page"}</span>
+            </div>
+          )}
+        </div>
+        <div className="switcher-card-footer">
+          <TabFavicon tab={tab} size={16} />
+          <span className="switcher-card-title">{tab.title}</span>
+          {tab.pinned && <PinIcon className="tab-pinned-icon" size={12} />}
+          <TabSoundIndicator tab={tab} onToggleMute={onToggleMute} />
+        </div>
       </div>
     </div>
   );

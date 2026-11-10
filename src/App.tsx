@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { activateTab, getBrowserHistory, getTabPreviews, getTabs, notifyPaletteClosed, notifyPaletteOpened, openUrl, searchWeb, setTabMuted, setTabPinned, type BrowserHistoryItem } from "./browser";
-import { ArrowRightIcon, InfoIcon, PinIcon, SearchIcon, XIcon } from "./icons";
+import { ArrowRightIcon, CornerDownLeftIcon, PinIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
 import { canStartPaletteDrag, dragPreviewCellForPoint, isAltModifierActive, nextFreeDragPosition, snapPalettePosition } from "./paletteDrag";
 import { buildSearchResults, type SearchResult } from "./paletteSearch";
@@ -742,7 +742,7 @@ export function App({
     return (
       <BookmarkManager
         theme={settings.theme}
-        useVibrancy={settings.useVibrancy}
+        colorScheme={settings.colorScheme}
         opacity={settings.paletteOpacity}
         disableMouse={settings.disableMouseBookmarks}
         position={visiblePalettePosition}
@@ -758,7 +758,7 @@ export function App({
       <div
         className={`palette-backdrop switcher-backdrop ${isClosing ? "is-closing" : ""}`}
         data-theme={settings.theme}
-        data-vibrancy={settings.useVibrancy ? "on" : "off"}
+        data-scheme={settings.colorScheme}
         onMouseDown={(event) => {
           if (event.target === event.currentTarget) handleClose();
         }}
@@ -797,7 +797,7 @@ export function App({
     <div
       className={`palette-backdrop ${isClosing ? "is-closing" : ""}`}
       data-theme={settings.theme}
-      data-vibrancy={settings.useVibrancy ? "on" : "off"}
+      data-scheme={settings.colorScheme}
       onMouseDown={(event) => {
         if (event.altKey) return;
         if (event.target === event.currentTarget) handleClose();
@@ -844,7 +844,6 @@ export function App({
       >
         {/* Elevated 3D Search Bar Input Row */}
         <div className="search-bar-row">
-          <SearchIcon size={17} className="search-lead-icon" />
           <input
             ref={inputRef}
             type="text"
@@ -852,40 +851,42 @@ export function App({
             value={query}
             onChange={(event) => handleQueryChange(event.target.value)}
             onKeyDown={handleSearchKeyDown}
-            placeholder="Search open tabs or web..."
+            placeholder="Search tabs or the web"
             aria-label="Search open tabs or the web"
             autoComplete="off"
             spellCheck="false"
           />
 
-          {query ? (
+          <div className="palette-actions">
+            {query ? (
+              <button
+                type="button"
+                className="clear-icon-btn"
+                onClick={() => {
+                  handleQueryChange("");
+                  setSelectedIndex(0);
+                  setIsExpanded(false);
+                  inputRef.current?.focus();
+                }}
+                aria-label="Clear query"
+              >
+                <XIcon size={13} />
+              </button>
+            ) : null}
+            <span className="palette-actions-label">Actions</span>
             <button
               type="button"
-              className="clear-icon-btn"
-              onClick={() => {
-                handleQueryChange("");
-                setSelectedIndex(0);
-                setIsExpanded(false);
-                inputRef.current?.focus();
-              }}
-              aria-label="Clear query"
-            >
-              <XIcon size={13} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              className={`expand-toggle-btn ${showDropdown ? "active" : ""}`}
+              className={`actions-key ${showDropdown ? "active" : ""}`}
               onClick={() => {
                 setIsExpanded((open) => !open);
                 inputRef.current?.focus();
               }}
-              aria-label={showDropdown ? "Hide open tabs" : "Show open tabs"}
-              title={showDropdown ? "Hide open tabs" : "Show open tabs"}
+              aria-label={showDropdown ? "Hide results" : "Show results"}
+              title={showDropdown ? "Hide results" : "Show results"}
             >
-              <InfoIcon size={15} />
+              <ArrowRightIcon size={13} />
             </button>
-          )}
+          </div>
         </div>
 
         {/* Dropdown Suggestions & Tabs */}
@@ -958,25 +959,25 @@ export function App({
                           <span className="row-title">{tab.title}</span>
                           {tab.pinned && <PinIcon className="tab-pinned-icon" size={12} />}
                           {tab.hostname && tab.hostname !== tab.title && (
-                            <span className="row-domain">— {tab.hostname}</span>
+                            <span className="row-domain">{tab.hostname}</span>
                           )}
                         </div>
                       </div>
 
-                      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                      <div className="list-row-trailing">
                         <TabSoundIndicator
                           tab={tab}
-                          size={16}
+                          size={15}
                           onToggleMute={settings.disableMouseCommandPalette ? undefined : () => void muteTab(tab)}
                         />
-                        {!tab.active || !tab.windowFocused ? (
-                          <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
-                            <span className="action-text">Switch to Tab</span>
+                        <div className={`list-row-action ${isSelected ? "selected" : ""}`}>
+                          <span className="action-text">{tab.active && tab.windowFocused ? "Current Tab" : "Switch to Tab"}</span>
+                          {isSelected ? (
                             <span className="action-arrow-badge">
-                              <ArrowRightIcon size={12} />
+                              <CornerDownLeftIcon size={13} />
                             </span>
-                          </div>
-                        ) : null}
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   );
