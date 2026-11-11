@@ -9,6 +9,19 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   }
+
+  /* Page stylesheets can target the shadow host (e.g. `div { font: ... }`) and
+     outrank :host rules, so re-declare typography on an element inside the
+     shadow tree where page CSS cannot reach. */
+  .jump-root {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1.5;
+    letter-spacing: normal;
+    text-transform: none;
+  }
 }
 
 @layer components {

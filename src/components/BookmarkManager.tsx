@@ -3,6 +3,7 @@ import { getBookmarks, openBookmark } from "../browser";
 import { BookmarkIcon, ChevronDownIcon, ChevronLeftIcon, CornerDownLeftIcon, GlobeIcon } from "../icons";
 import { useMountEffect } from "../hooks/useMountEffect";
 import { dragPreviewCellForPoint, isAltModifierActive, nextFreeDragPosition, snapPalettePosition } from "../paletteDrag";
+import { emacsNavigationKey } from "../paletteKeys";
 import { saveStoredSettings } from "../settings";
 import type { BookmarkItem, ColorScheme, ColorTheme, PalettePosition } from "../types";
 
@@ -404,6 +405,9 @@ export function BookmarkManager({
 
   useMountEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      const navKey = emacsNavigationKey(event);
+      // Ctrl+N/P step one row; only the real arrow keys jump to the edges with Ctrl/Cmd.
+      const jumpToEdge = !navKey && (event.metaKey || event.ctrlKey);
       if (event.key === "Escape") {
         event.preventDefault();
         if (queryRef.current) {
@@ -417,12 +421,12 @@ export function BookmarkManager({
         } else {
           onCloseRef.current();
         }
-      } else if (event.key === "ArrowDown") {
+      } else if (event.key === "ArrowDown" || navKey === "ArrowDown") {
         event.preventDefault();
         const count = countRef.current;
         if (count > 0) {
           const current = selectedIndexRef.current;
-          if (event.metaKey || event.ctrlKey) {
+          if (jumpToEdge) {
             if (current < count - 1) {
               scrollNeededRef.current = true;
               isKeyboardNavRef.current = true;
@@ -440,12 +444,12 @@ export function BookmarkManager({
             setSelectedIndex(next);
           }
         }
-      } else if (event.key === "ArrowUp") {
+      } else if (event.key === "ArrowUp" || navKey === "ArrowUp") {
         event.preventDefault();
         const count = countRef.current;
         if (count > 0) {
           const current = selectedIndexRef.current;
-          if (event.metaKey || event.ctrlKey) {
+          if (jumpToEdge) {
             if (current > 0) {
               scrollNeededRef.current = true;
               isKeyboardNavRef.current = true;
