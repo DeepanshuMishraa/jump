@@ -83,10 +83,20 @@ function cloneForwardedEvent(event: Event): Event | undefined {
   return undefined;
 }
 
-// The deepest focused element, through open shadow roots.
+// Content scripts can read closed shadow roots too; a page that hides an iframe
+// in one must not slip focus past the guard.
+function anyShadowRoot(element: Element): ShadowRoot | null {
+  return chrome.dom?.openOrClosedShadowRoot?.(element as HTMLElement) ?? element.shadowRoot;
+}
+
+// The deepest focused element, through open and closed shadow roots.
 function deepActiveElement() {
   let element = document.activeElement;
-  while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
+  while (element) {
+    const next = anyShadowRoot(element)?.activeElement;
+    if (!next) break;
+    element = next;
+  }
   return element;
 }
 

@@ -12,7 +12,7 @@
  *   xvfb-run -a node tests/e2e/iframe-focus.mjs
  */
 import { createServer } from "node:http";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,11 +24,18 @@ const extensionDir = path.resolve(process.env.EXT_DIST ?? path.join(repoRoot, "d
 
 function chromiumExecutable() {
   if (process.env.CHROME_PATH) return process.env.CHROME_PATH;
-  const cache = path.join(os.homedir(), ".cache/ms-playwright");
-  const revision = readdirSync(cache)
-    .filter((name) => /^chromium-\d+$/.test(name))
-    .sort((a, b) => Number(b.split("-")[1]) - Number(a.split("-")[1]))[0];
-  return path.join(cache, revision, "chrome-linux64/chrome");
+  const cacheDir = path.join(os.homedir(), ".cache", "ms-playwright");
+  if (!existsSync(cacheDir)) throw new Error(`no Playwright browser cache at ${cacheDir}`);
+  const builds = readdirSync(cacheDir)
+    .filter((entry) => /^chromium-\d+$/.test(entry))
+    .sort((a, b) => Number(b.split("-")[1]) - Number(a.split("-")[1]));
+  for (const build of builds) {
+    for (const relative of ["chrome-linux64/chrome", "chrome-linux/chrome"]) {
+      const candidate = path.join(cacheDir, build, relative);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  throw new Error("no chromium binary in the Playwright browser cache");
 }
 
 const checks = [];
@@ -52,19 +59,25 @@ const server = createServer((request, response) => {
   const port = server.address().port;
   response.end(`<!doctype html><title>Iframe fixture</title>
 <iframe id="same" srcdoc="<textarea id=t></textarea>"></iframe>
-<iframe id="cross" src="http://localhost:${port}/frame"></iframe>`);
+<iframe id="cross" src="http://localhost:${port}/frame"></iframe>
+<div id="closed-host"></div>
+<script>
+  const closedRoot = document.getElementById("closed-host").attachShadow({ mode: "closed" });
+  closedRoot.innerHTML = '<iframe srcdoc="<textarea id=t></textarea>"></iframe>';
+  window.closedFrameTextarea = () => closedRoot.querySelector("iframe").contentDocument.getElementById("t");
+</script>`);
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 
 const profile = mkdtempSync(path.join(os.tmpdir(), "jump-iframe-focus-"));
-const context = await chromium.launchPersistentContext(profile, {
-  executablePath: chromiumExecutable(),
-  headless: false,
-  args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`, "--site-per-process"],
-});
-
+let context;
 try {
+  context = await chromium.launchPersistentContext(profile, {
+    executablePath: chromiumExecutable(),
+    headless: false,
+    args: [`--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`, "--site-per-process"],
+  });
   const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker", { timeout: 30000 }));
   const page = context.pages()[0] ?? (await context.newPage());
   await page.goto(`${origin}/`, { waitUntil: "load" });
@@ -129,6 +142,15 @@ try {
   await sleep(150);
   check("palette keeps the keys typed after the iframe element is focused", (await paletteValue()) === "abcxyzq", `palette=${JSON.stringify(await paletteValue())}`);
 
+  // An iframe inside a closed page shadow root.
+  await page.evaluate(() => window.closedFrameTextarea().focus());
+  await sleep(300);
+  await page.keyboard.type("w");
+  await sleep(150);
+  const closedValue = await page.evaluate(() => window.closedFrameTextarea().value);
+  check("iframe in a closed shadow root gets no keys", closedValue === "", `iframe=${JSON.stringify(closedValue)}`);
+  check("palette keeps the keys typed after a closed-shadow iframe steal", (await paletteValue()) === "abcxyzqw", `palette=${JSON.stringify(await paletteValue())}`);
+
   // Closed palette: iframes work normally again.
   await page.keyboard.press("Escape");
   await page.keyboard.press("Escape");
@@ -138,7 +160,7 @@ try {
   const afterClose = await page.evaluate(() => document.getElementById("same").contentDocument.getElementById("t").value);
   check("after closing, the iframe receives keys again", afterClose === "ok", `iframe=${JSON.stringify(afterClose)}`);
 } finally {
-  await context.close().catch(() => undefined);
+  await context?.close().catch(() => undefined);
   rmSync(profile, { recursive: true, force: true });
   server.close();
 }
