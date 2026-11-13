@@ -83,6 +83,34 @@ function cloneForwardedEvent(event: Event): Event | undefined {
   return undefined;
 }
 
+// The deepest focused element, through open shadow roots.
+function deepActiveElement() {
+  let element = document.activeElement;
+  while (element?.shadowRoot?.activeElement) element = element.shadowRoot.activeElement;
+  return element;
+}
+
+function isFrameOwner(element: Element | null) {
+  return element instanceof HTMLIFrameElement || element instanceof HTMLFrameElement ||
+    element instanceof HTMLObjectElement || element instanceof HTMLEmbedElement;
+}
+
+// Keys typed in a frame go to that frame's window and never pass the listeners
+// below. So while the palette is open, focus that moves into a frame (the page
+// focused it, or the frame focused itself) is pulled straight back.
+function keepFocusOutOfFrames(event: Event) {
+  const { host, lastFocus } = state;
+  if (!host || !lastFocus?.isConnected) return;
+  if (event.type === "blur" && event.target !== window) return;
+  if (!isFrameOwner(deepActiveElement())) return;
+  // Focus cannot be moved back while it is still moving into the frame.
+  setTimeout(() => {
+    if (state.host && state.lastFocus === lastFocus && lastFocus.isConnected && isFrameOwner(deepActiveElement())) {
+      lastFocus.focus({ preventScroll: true });
+    }
+  }, 0);
+}
+
 // Registered at document_start, before any page script, so these window capture
 // listeners run before the page's own global shortcuts. Events from inside the
 // closed shadow root are retargeted to `host` here; stopping them at the window
@@ -135,3 +163,5 @@ function handlePageEvent(event: Event) {
 for (const type of FORWARDED_EVENT_TYPES) {
   window.addEventListener(type, handlePageEvent, { capture: true });
 }
+window.addEventListener("focusin", keepFocusOutOfFrames, { capture: true });
+window.addEventListener("blur", keepFocusOutOfFrames, { capture: true });
