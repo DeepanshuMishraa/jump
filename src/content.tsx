@@ -1,19 +1,26 @@
 import { createRoot, type Root } from "react-dom/client";
 import { App } from "./App";
+import { EventRootContext } from "./eventRoot";
+import { paletteGuardState } from "./paletteGuardState";
 import type { BrowserMessage } from "./types";
 import cssText from "./styles.css?inline";
 
 let root: Root | undefined;
 let host: HTMLDivElement | undefined;
+// Shared with keyGuard.ts (document_start), which keeps the page from seeing
+// or stealing palette keystrokes while these fields are set.
+const guardState = paletteGuardState();
 
-// Events from the closed shadow root are retargeted to `host` outside the
-// shadow tree. Stop them at the boundary after the palette's handlers run so
-// bubble-phase shortcuts on the host page cannot observe palette keystrokes.
-// Capture-phase page listeners run before the event reaches the shadow tree;
-// they cannot be blocked here without also preventing the palette from
-// receiving the event.
-function swallowKeyEvent(event: KeyboardEvent) {
-  event.stopPropagation();
+function appendHost(hostElement: HTMLDivElement) {
+  const parent = document.documentElement ?? document.body;
+  if (parent) {
+    parent.append(hostElement);
+    return;
+  }
+  document.addEventListener("DOMContentLoaded", () => {
+    if (host !== hostElement) return;
+    (document.documentElement ?? document.body)?.append(hostElement);
+  }, { once: true });
 }
 
 function closePalette() {
@@ -21,6 +28,10 @@ function closePalette() {
   host?.remove();
   root = undefined;
   host = undefined;
+  guardState.host = undefined;
+  guardState.shadowRoot = undefined;
+  guardState.mountPoint = undefined;
+  guardState.lastFocus = undefined;
 }
 
 function openPalette(message: Extract<BrowserMessage, { type: "open-palette" }> = { type: "open-palette" }) {
@@ -28,31 +39,38 @@ function openPalette(message: Extract<BrowserMessage, { type: "open-palette" }> 
     // Already mounted: chrome.runtime.onMessage inside App will handle cycling/mode
     return;
   }
-  host = document.createElement("div");
-  host.id = "jump-command-palette";
-  host.style.cssText = "position:fixed;inset:0;z-index:2147483647;pointer-events:none;";
-  host.addEventListener("keydown", swallowKeyEvent);
-  host.addEventListener("keyup", swallowKeyEvent);
-  host.addEventListener("keypress", swallowKeyEvent);
+  const hostElement = document.createElement("div");
+  hostElement.id = "jump-command-palette";
+  hostElement.style.cssText = "position:fixed;inset:0;z-index:2147483647;pointer-events:none;";
 
-  const shadowRoot = host.attachShadow({ mode: "closed" });
+  const shadow = hostElement.attachShadow({ mode: "closed" });
   const style = document.createElement("style");
   style.textContent = cssText;
-  shadowRoot.append(style);
-  const mountPoint = document.createElement("div");
-  shadowRoot.append(mountPoint);
-  document.documentElement.append(host);
-  root = createRoot(mountPoint);
+  shadow.append(style);
+  const point = document.createElement("div");
+  shadow.append(point);
+  shadow.addEventListener("focusin", (focusEvent) => {
+    if (focusEvent.target instanceof HTMLElement) guardState.lastFocus = focusEvent.target;
+  });
+
+  host = hostElement;
+  guardState.host = hostElement;
+  guardState.shadowRoot = shadow;
+  guardState.mountPoint = point;
+
+  appendHost(hostElement);
+  root = createRoot(point);
   root.render(
-    <App
-      onClose={closePalette}
-      initialMode={message.mode}
-      initialActiveTabId={message.activeTabId}
-    />,
+    <EventRootContext.Provider value={shadow}>
+      <App
+        onClose={closePalette}
+        initialMode={message.mode}
+        initialActiveTabId={message.activeTabId}
+      />
+    </EventRootContext.Provider>,
   );
 }
 
 chrome.runtime.onMessage.addListener((message: BrowserMessage) => {
   if (message.type === "open-palette") openPalette(message);
 });
-

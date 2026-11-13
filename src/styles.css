@@ -745,6 +745,11 @@ button {
   animation: card-exit 130ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
 }
 
+/* The switcher container is focused so keystrokes stay inside the palette. */
+.switcher-hud:focus {
+  outline: none;
+}
+
 .switcher-track {
   display: flex;
   flex-direction: row;

@@ -8,7 +8,13 @@ import { fileURLToPath } from "node:url";
 const projectRoot = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig(({ mode }) => {
-  const contentBuild = mode === "content";
+  // Content scripts must be single-file IIFEs, so each gets its own build pass.
+  const contentEntries: Record<string, { input: string; output: string }> = {
+    content: { input: "src/content.tsx", output: "assets/content.js" },
+    keyguard: { input: "src/keyGuard.ts", output: "assets/keyguard.js" },
+  };
+  const contentEntry = contentEntries[mode];
+  const contentBuild = contentEntry !== undefined;
 
   return {
   plugins: [
@@ -29,7 +35,7 @@ export default defineConfig(({ mode }) => {
     emptyOutDir: !contentBuild,
     modulePreload: false,
     rollupOptions: {
-      input: contentBuild ? resolve(projectRoot, "src/content.tsx") : {
+      input: contentBuild ? resolve(projectRoot, contentEntry.input) : {
         app: resolve(projectRoot, "index.html"),
         popup: resolve(projectRoot, "popup.html"),
         background: resolve(projectRoot, "src/background.ts"),
@@ -37,7 +43,7 @@ export default defineConfig(({ mode }) => {
       output: contentBuild ? {
         format: "iife",
         inlineDynamicImports: true,
-        entryFileNames: "assets/content.js",
+        entryFileNames: contentEntry.output,
       } : {
         entryFileNames: (chunk) => chunk.name === "background" ? "assets/background.js" : "assets/[name].js",
       },
