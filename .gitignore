@@ -3,3 +3,6 @@ dist
 *.zip
 .firecrawl
 .DS_Store
+tests/e2e/artifacts
+tests/e2e/.profile
+tests/e2e/.site-profile

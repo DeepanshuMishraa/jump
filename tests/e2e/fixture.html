@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Jump fixture</title>
+    <style>
+      body {
+        font: 14px/1.5 system-ui, sans-serif;
+        margin: 0;
+        padding: 32px;
+        background: #f6f6f4;
+        color: #1b1b1b;
+      }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      p { margin: 0 0 16px; color: #555; }
+      textarea {
+        width: 420px;
+        height: 64px;
+        padding: 8px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        font: inherit;
+      }
+      #log { font-family: ui-monospace, monospace; font-size: 12px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1 id="heading">Jump keyboard-isolation fixture</h1>
+    <p id="subtitle">Palette page</p>
+    <textarea id="composer" placeholder="ChatGPT-style composer"></textarea>
+    <pre id="log"></pre>
+    <script>
+      // Fixture page: mimics the two ways real pages steal palette keystrokes.
+      const params = new URLSearchParams(location.search);
+      const title = params.get("title");
+      if (title) document.title = title;
+      document.getElementById("heading").textContent = title || document.title;
+      document.getElementById("subtitle").textContent = location.pathname;
+
+      window.__fixtureLog = [];
+      const composer = document.getElementById("composer");
+      const logElement = document.getElementById("log");
+
+      function record(entry) {
+        window.__fixtureLog.push(entry);
+        logElement.textContent = window.__fixtureLog.join("\n");
+      }
+
+      window.__fixtureReset = () => {
+        window.__fixtureLog.length = 0;
+        logElement.textContent = "";
+        composer.value = "";
+        composer.blur();
+      };
+
+      // ChatGPT-style: "type anywhere" focuses the composer whenever focus is
+      // not already in an editable element.
+      document.addEventListener("keydown", (event) => {
+        const active = document.activeElement;
+        const tag = active && active.tagName;
+        const editable = tag === "INPUT" || tag === "TEXTAREA" || Boolean(active && active.isContentEditable);
+        if (!editable) composer.focus();
+      });
+
+      // T3-style: a window capture listener that sees every key and swallows the
+      // navigation keys before anything else can use them.
+      window.addEventListener(
+        "keydown",
+        (event) => {
+          record("window:" + event.key);
+          const isCtrlK = (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k";
+          if (["ArrowUp", "ArrowDown", "Enter", "Escape"].includes(event.key) || isCtrlK) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+        },
+        true,
+      );
+
+      document.addEventListener("paste", () => record("paste"));
+      document.addEventListener("copy", () => record("copy"));
+      document.addEventListener("cut", () => record("cut"));
+    </script>
+  </body>
+</html>

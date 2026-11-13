@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { activateTab, getBrowserHistory, getTabPreviews, getTabs, notifyPaletteClosed, notifyPaletteOpened, openUrl, searchWeb, setTabMuted, setTabPinned, type BrowserHistoryItem } from "./browser";
 import { ArrowRightIcon, CornerDownLeftIcon, PinIcon, XIcon } from "./icons";
 import { PaletteAction } from "./PaletteAction";
@@ -7,6 +7,7 @@ import { buildSearchResults, type SearchResult } from "./paletteSearch";
 import { stalePreviewTabIds } from "./previewCache";
 import { getSearchHistory, recordSearch, type SearchHistoryEntry } from "./searchHistory";
 import { DEFAULT_SETTINGS, getStoredSettings, pinnedTabIdentity, saveStoredSettings, subscribeToSettings } from "./settings";
+import { useEventRoot } from "./eventRoot";
 import { useMountEffect } from "./hooks/useMountEffect";
 import { TabFavicon, TabSoundIndicator } from "./components/TabVisuals";
 import { GalleryCard, SwitcherCard } from "./components/TabCards";
@@ -55,6 +56,7 @@ export function App({
   } | undefined>(undefined);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const eventRoot = useEventRoot();
 
   const isSwitcher = mode === "switcher";
   const isBookmarks = mode === "bookmarks";
@@ -65,6 +67,7 @@ export function App({
   const [isClosing, setIsClosing] = useState(false);
   const isClosingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const switcherRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<SearchResult[]>([]);
@@ -224,8 +227,15 @@ export function App({
   }, [initialActiveTabId, invalidateTabPreviews, isSwitcher]);
   refreshTabsRef.current = refreshTabs;
 
+  // Keep focus inside the palette. The switcher has no input, so focusing its
+  // container keeps keystrokes out of the page (and off the page's own
+  // "type anywhere" focus handlers) while keyboard navigation runs.
+  useEffect(() => {
+    if (mode === "switcher") switcherRef.current?.focus();
+    else if (mode === "search") inputRef.current?.focus();
+  }, [mode]);
+
   useMountEffect(() => {
-    if (modeRef.current !== "switcher") inputRef.current?.focus();
     void refreshTabsRef.current();
     let refreshTimer: number | undefined;
     const scheduleRefresh = () => {
@@ -367,7 +377,8 @@ export function App({
 
   // Global keyup/keydown handler for releasing Alt key and cycling in switcher mode
   useMountEffect(() => {
-    const handleWindowKeyUp = (event: globalThis.KeyboardEvent) => {
+    const handleWindowKeyUp = (event: Event) => {
+      if (!(event instanceof KeyboardEvent)) return;
       if (event.key === "Alt" || !isAltModifierActive(event)) {
         paletteDragModifierRef.current = false;
         setIsPaletteDragReady(false);
@@ -384,7 +395,8 @@ export function App({
       }
     };
 
-    const handleWindowKeyDown = (event: globalThis.KeyboardEvent) => {
+    const handleWindowKeyDown = (event: Event) => {
+      if (!(event instanceof KeyboardEvent)) return;
       if (isAltModifierActive(event)) {
         paletteDragModifierRef.current = true;
         setIsPaletteDragReady(!settingsRef.current.disableMouseCommandPalette);
@@ -427,11 +439,11 @@ export function App({
       }
     };
 
-    window.addEventListener("keyup", handleWindowKeyUp, { capture: true });
-    window.addEventListener("keydown", handleWindowKeyDown, { capture: true });
+    eventRoot.addEventListener("keyup", handleWindowKeyUp, { capture: true });
+    eventRoot.addEventListener("keydown", handleWindowKeyDown, { capture: true });
     return () => {
-      window.removeEventListener("keyup", handleWindowKeyUp, { capture: true });
-      window.removeEventListener("keydown", handleWindowKeyDown, { capture: true });
+      eventRoot.removeEventListener("keyup", handleWindowKeyUp, { capture: true });
+      eventRoot.removeEventListener("keydown", handleWindowKeyDown, { capture: true });
     };
   });
 
@@ -763,7 +775,14 @@ export function App({
           if (event.target === event.currentTarget) handleClose();
         }}
       >
-        <div className={`switcher-hud ${isClosing ? "is-closing" : ""}`} role="dialog" aria-label="Tab Switcher" style={{ opacity: settings.paletteOpacity }}>
+        <div
+          className={`switcher-hud ${isClosing ? "is-closing" : ""}`}
+          role="dialog"
+          aria-label="Tab Switcher"
+          tabIndex={-1}
+          ref={switcherRef}
+          style={{ opacity: settings.paletteOpacity }}
+        >
           <div
             className={`switcher-track ${tabs.length <= 3 ? "is-centered" : ""}`}
             ref={trackRef}
