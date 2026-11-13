@@ -90,10 +90,9 @@ const context = await chromium.launchPersistentContext(profileDir, {
   ],
 });
 
-let worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker", { timeout: 30000 }));
-const page = context.pages()[0] ?? (await context.newPage());
-
 try {
+  let worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker", { timeout: 30000 }));
+  const page = context.pages()[0] ?? (await context.newPage());
   await page.goto(siteUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
   await sleep(6000);
   // PAIR_TOKEN_FILE: pair a T3 Code environment first. The token is never printed.
@@ -164,7 +163,9 @@ try {
     });
     console.log(`palette input value: ${JSON.stringify(paletteValue)}`);
     console.log(`site text boxes: ${JSON.stringify(siteState)}`);
-    const composerStayedEmpty = siteState.visibleComposers.every((entry) => entry.endsWith('=""'));
+    // Require a composer: `every` on no composers would pass without testing anything.
+    const composerStayedEmpty = siteState.composerPresent && siteState.visibleComposers.length > 0 &&
+      siteState.visibleComposers.every((entry) => entry.endsWith('=""'));
     console.log(
       paletteValue === "hello" && composerStayedEmpty && !siteState.activeInsideComposer
         ? "RESULT: PASS  palette kept the keystrokes and the composer stayed empty"

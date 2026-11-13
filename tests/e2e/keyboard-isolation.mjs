@@ -18,7 +18,8 @@
  *   5. switcher mode: Alt+Tab cycles inside the palette, Alt release activates
  *      the expected tab, and the page never sees the keys
  *
- * Needs playwright-core (not a project dependency): `pnpm add -D playwright-core`,
+ * Needs playwright-core (not a project dependency, so install it without saving:
+ * `npm i --no-save playwright-core`),
  * a Playwright Chromium in ~/.cache/ms-playwright (or CHROME_PATH), and `pnpm build`.
  */
 import { createServer } from "node:http";
@@ -314,7 +315,7 @@ async function main() {
     await sleep(150);
     const afterClose = await fixtureState(palettePage);
     check("page listeners fire again after the palette closes", afterClose.log.length > 0, `log=${JSON.stringify(afterClose.log)}`);
-    check("page receives the keystroke after close", afterClose.composer === "a" || afterClose.composerFocused, `composer=${JSON.stringify(afterClose.composer)} focused=${afterClose.composerFocused}`);
+    check("page receives the keystroke after close", afterClose.composer === "a", `composer=${JSON.stringify(afterClose.composer)} focused=${afterClose.composerFocused}`);
     await palettePage.screenshot({ path: path.join(artifactDir, "03-after-close.png") });
 
     // ------------------------------------------------------------------ Enter
@@ -381,17 +382,37 @@ async function main() {
     check("second Alt+Tab wraps the switcher selection", selectionSecondTab === 0, `selected=${selectionSecondTab}`);
     check("page saw no switcher keystrokes", switcherState.log.length === 0, `log=${JSON.stringify(switcherState.log.slice(0, 8))}`);
 
+    // Index 0 is this (already active) tab, so a missing activation would go
+    // unnoticed there: move on to another tab before releasing Alt.
+    await palettePage.keyboard.press("Tab");
+    await sleep(120);
+    const selectionThirdTab = await readSelection();
+    const selectedTitle = await palette.call(
+      "function(){ return this.querySelector('[data-switcher-index].is-selected .switcher-card-title')?.textContent ?? null; }",
+    );
+    check("third Alt+Tab selects another tab", selectionThirdTab === 1 && Boolean(selectedTitle), `selected=${selectionThirdTab} title=${selectedTitle}`);
+
     await palettePage.keyboard.up("Alt");
     const switcherClosed = await waitFor("switcher closed", async () => (await paletteMounted(palettePage)) === false, 8000).catch(
       () => undefined,
     );
     check("releasing Alt closes the switcher", switcherClosed !== undefined);
-    const activeAfterSwitcher = await activeTabUrl(worker);
+    const activeAfterSwitcher = await waitFor(
+      "selected tab activated",
+      () => worker.evaluate(async () => {
+        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        return tab ? { url: tab.url, title: tab.title } : undefined;
+      }).then((tab) => (tab && tab.url !== paletteUrl ? tab : undefined)),
+      8000,
+    ).catch(() => undefined);
     check(
       "releasing Alt activates the tab selected by Alt+Tab",
-      activeAfterSwitcher === paletteUrl,
-      `active=${activeAfterSwitcher} expected=${paletteUrl}`,
+      activeAfterSwitcher !== undefined && activeAfterSwitcher.title === selectedTitle,
+      `active=${JSON.stringify(activeAfterSwitcher)} expected title=${selectedTitle}`,
     );
+    // Later sections type into the fixture tab again.
+    await palettePage.bringToFront();
+    await sleep(300);
     await palette.detach();
 
     // ------------------------------------------- new-tab page (window event root)

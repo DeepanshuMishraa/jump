@@ -9,7 +9,7 @@ const projectRoot = fileURLToPath(new URL(".", import.meta.url));
 
 export default defineConfig(({ mode }) => {
   // Content scripts must be single-file IIFEs, so each gets its own build pass.
-  const contentEntries: Record<string, { input: string; output: string }> = {
+  const contentEntries: Partial<Record<string, { input: string; output: string }>> = {
     content: { input: "src/content.tsx", output: "assets/content.js" },
     keyguard: { input: "src/keyGuard.ts", output: "assets/keyguard.js" },
   };
